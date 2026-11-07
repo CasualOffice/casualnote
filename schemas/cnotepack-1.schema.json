@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CasualOffice/opennote/schemas/cnotepack-1.schema.json",
+  "title": "CasualNote Package, version 1",
+  "description": "Spec: docs/36-EXPORT-FORMAT.md. The manifest, page and database definitions are selected through $defs. x- prefixed fields are allowed anywhere and must be preserved.",
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^/\\\\\\u0000-\\u001f]+$" },
+    "nullableId": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+    "lang": { "type": "string", "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$" },
+    "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "point2": { "type": "array", "prefixItems": [{ "type": "number" }, { "type": "number" }], "items": false, "minItems": 2 },
+    "inline": {
+      "oneOf": [
+        {
+          "type": "object", "required": ["text"], "patternProperties": { "^x-": true }, "additionalProperties": false,
+          "properties": {
+            "text": { "type": "string" },
+            "marks": { "type": "array", "uniqueItems": true, "items": { "enum": ["bold", "italic", "code", "highlight"] } }
+          }
+        },
+        {
+          "type": "object", "required": ["page"], "patternProperties": { "^x-": true }, "additionalProperties": false,
+          "properties": { "page": { "$ref": "#/$defs/id" } }
+        }
+      ]
+    },
+    "content": { "type": "array", "items": { "$ref": "#/$defs/inline" } },
+    "block": {
+      "type": "object",
+      "required": ["id", "type"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "enum": ["paragraph", "heading", "bulleted", "numbered", "todo", "quote", "callout", "code", "divider", "database", "embed"] },
+        "lang": { "$ref": "#/$defs/lang" },
+        "content": { "$ref": "#/$defs/content" },
+        "level": { "enum": [1, 2, 3] },
+        "checked": { "type": "boolean" },
+        "database": { "$ref": "#/$defs/id" },
+        "page": { "$ref": "#/$defs/id" }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "heading" } } }, "then": { "required": ["level", "content"] } },
+        { "if": { "properties": { "type": { "const": "todo" } } }, "then": { "required": ["checked", "content"] } },
+        { "if": { "properties": { "type": { "enum": ["paragraph", "bulleted", "numbered", "quote", "callout", "code"] } } }, "then": { "required": ["content"] } },
+        { "if": { "properties": { "type": { "const": "database" } } }, "then": { "required": ["database"] } },
+        { "if": { "properties": { "type": { "const": "embed" } } }, "then": { "required": ["page"] } }
+      ]
+    },
+    "canvasItem": {
+      "type": "object",
+      "required": ["id", "kind", "x", "y", "width", "height", "text"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["sticky", "rect", "ellipse", "text"] },
+        "x": { "type": "number" }, "y": { "type": "number" },
+        "width": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "exclusiveMinimum": 0 },
+        "color": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    },
+    "ink": {
+      "oneOf": [
+        {
+          "type": "object", "required": ["id", "kind", "color", "width", "points"], "patternProperties": { "^x-": true }, "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "enum": ["pen", "highlighter"] },
+            "color": { "type": "string" },
+            "width": { "type": "number", "exclusiveMinimum": 0 },
+            "points": {
+              "type": "array",
+              "items": { "type": "array", "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number", "minimum": 0, "maximum": 1 }], "items": false, "minItems": 3 }
+            }
+          }
+        },
+        {
+          "type": "object", "required": ["id", "kind", "from", "to"], "patternProperties": { "^x-": true }, "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "arrow" },
+            "from": { "$ref": "#/$defs/point2" },
+            "to": { "$ref": "#/$defs/point2" }
+          }
+        }
+      ]
+    },
+    "manifest": {
+      "type": "object",
+      "required": ["format", "version", "created", "generator", "scope", "languages", "pages", "databases", "files"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "format": { "const": "casualnote.package" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+        "created": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$" },
+        "generator": { "type": "string" },
+        "scope": { "enum": ["workspace", "page"] },
+        "languages": { "type": "array", "items": { "$ref": "#/$defs/lang" } },
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "title", "path"], "additionalProperties": false, "patternProperties": { "^x-": true },
+            "properties": { "id": { "$ref": "#/$defs/id" }, "title": { "type": "string" }, "path": { "$ref": "#/$defs/path" }, "readable": { "$ref": "#/$defs/path" } }
+          }
+        },
+        "databases": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "name", "path"], "additionalProperties": false, "patternProperties": { "^x-": true },
+            "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "path": { "$ref": "#/$defs/path" } }
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["path", "sha256", "bytes"], "additionalProperties": false, "patternProperties": { "^x-": true },
+            "properties": { "path": { "$ref": "#/$defs/path" }, "sha256": { "$ref": "#/$defs/sha256" }, "bytes": { "type": "integer", "minimum": 0 } }
+          }
+        }
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["id", "title", "parent", "kind", "view", "favorite", "blocks"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "parent": { "$ref": "#/$defs/nullableId" },
+        "kind": { "enum": ["document", "database"] },
+        "database": { "$ref": "#/$defs/id" },
+        "view": { "enum": ["page", "canvas"] },
+        "favorite": { "type": "boolean" },
+        "lang": { "$ref": "#/$defs/lang" },
+        "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } },
+        "canvas": {
+          "type": "object", "required": ["note", "items", "ink"], "patternProperties": { "^x-": true }, "additionalProperties": false,
+          "properties": {
+            "note": {
+              "type": "object", "required": ["x", "y", "width"], "additionalProperties": false,
+              "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number", "exclusiveMinimum": 0 } }
+            },
+            "items": { "type": "array", "items": { "$ref": "#/$defs/canvasItem" } },
+            "ink": { "type": "array", "items": { "$ref": "#/$defs/ink" } }
+          }
+        }
+      },
+      "if": { "properties": { "kind": { "const": "database" } } },
+      "then": { "required": ["database"] }
+    },
+    "database": {
+      "type": "object",
+      "required": ["id", "name", "defaultView", "statuses", "columns", "rows"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "defaultView": { "enum": ["table", "board"] },
+        "statuses": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "required": ["id", "name", "group"], "additionalProperties": false, "patternProperties": { "^x-": true },
+            "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "group": { "enum": ["todo", "active", "review", "done"] } }
+          }
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "name", "type"], "additionalProperties": false, "patternProperties": { "^x-": true },
+            "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "type": { "enum": ["text", "date"] } }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "name", "status", "values"], "additionalProperties": false, "patternProperties": { "^x-": true },
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "name": { "type": "string" },
+              "status": { "$ref": "#/$defs/id" },
+              "values": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

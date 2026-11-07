@@ -1,0 +1,14 @@
+/target/
+**/*.rs.bk
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+__pycache__/
+.DS_Store
+*.swp
+.idea/
+.vscode/
+/webapp/pkg/
+node_modules/
+.claude/*
+!.claude/skills/

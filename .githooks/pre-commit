@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runs before every commit. docs/15.
+set -e
+python3 tools/check-docs.py
+python3 tools/test_cnotepack.py >/dev/null 2>&1 || { echo "tools/test_cnotepack.py failed"; exit 1; }

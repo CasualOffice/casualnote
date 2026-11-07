@@ -1,0 +1,5 @@
+#!/bin/sh
+# Conventional Commits, as CLAUDE.md requires.
+head -1 "$1" | grep -Eq '^(feat|fix|docs|test|chore|refactor|perf|build|ci)(\([a-z0-9-]+\))?: .{1,}$' && exit 0
+echo "Refused: the first line must look like 'docs(scope): what changed'." >&2
+exit 1

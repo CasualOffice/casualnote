@@ -1,0 +1,312 @@
+# 20 — Error code registry
+
+Stable, and never reused. **The contract:** messages carry ids and counts, never note text. Each area's document is the authority for when a code fires, and this page is the index. No engine exists, so only `CN-PKG-*` is implemented, in `tools/cnotepack.py`. The AI model catalogue uses `CN-MDL` because `CN-MOD` is the data model. `CN-SDK` is reserved (`FND-75`).
+
+## Export package (`CN-PKG`), see [36](36-EXPORT-FORMAT.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-PKG-0001 | It is not a ZIP, or `mimetype` is not the first entry with the exact value, stored uncompressed |
+| CN-PKG-0002 | `manifest.json` is missing, invalid, or is not this format |
+| CN-PKG-0003 | The major version is newer than the reader supports |
+| CN-PKG-0004 | A path is absolute, has `..`, a backslash, a drive letter, a NUL or control character, or is not NFC |
+| CN-PKG-0005 | Two entries have the same path, or differ only by case or Unicode form |
+| CN-PKG-0006 | An entry is encrypted, or a symbolic link |
+| CN-PKG-0007 | Limits are exceeded (below). Sizes are measured while decompressing, never trusted from the header |
+| CN-PKG-0008 | A file's hash or size differs from the manifest, or a listed file is missing |
+| CN-PKG-0009 | A file exists that the manifest does not list |
+| CN-PKG-0010 | A page or database file does not match its schema, or its id differs from the manifest |
+
+## Data model (`CN-MOD`), see [22](22-DATA-MODEL.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-MOD-0001 | An id breaks the accepted form |
+| CN-MOD-0002 | A page or database id is non-NFC, or collides under case folding |
+| CN-MOD-0003 | Block text is too long |
+| CN-MOD-0004 | A page has too many blocks |
+| CN-MOD-0005 | A coordinate or size is out of range or not finite |
+| CN-MOD-0006 | A string attribute is too long |
+| CN-MOD-0007 | Encoded samples are malformed |
+| CN-MOD-0008 | A stroke or page has too much ink |
+| CN-MOD-0009 | A page or database's package JSON would exceed 64 MiB, the [36](36-EXPORT-FORMAT.md) limit |
+| CN-MOD-0010 | A database has too many columns, statuses or rows |
+| CN-MOD-0011 | A canvas has too many items |
+
+## Operations (`CN-OPS`), see [24](24-OPERATIONS-AND-MERGE.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-OPS-0001 | Validation failed; the details name the op and field |
+| CN-OPS-0002 | Stale `base`: re-read and re-map |
+| CN-OPS-0003 | Batch too large: more than 10,000 ops or 16 MiB of text. Split into a group |
+| CN-OPS-0004 | Stale fingerprint on a tool write |
+| CN-OPS-0005 | Op schema version newer than this build |
+| CN-OPS-0006 | System op from a caller that may not issue it |
+| CN-OPS-0007 | Undo refused; the reason is included |
+| CN-OPS-0008 | Purge refused: the 30 days are not up, or a device has not acknowledged |
+| CN-OPS-0099 | Compile failed after validation passed. A bug, reported, and the document is reloaded |
+
+## Merge (`CN-MRG`), see [24](24-OPERATIONS-AND-MERGE.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-MRG-0001 | Could not load a document. Its segments stay, and the document shows as unavailable |
+| CN-MRG-0002 | Update over the import limit: 256 MiB per update, proposal |
+| CN-MRG-0003 | Import panicked or trapped. Segment quarantined |
+| CN-MRG-0004 | Merged state would break a [22](22-DATA-MODEL.md) limit |
+| CN-MRG-0005 | Update predates this document's trim point. Goes to the restored-copy path (`SYN-05`) |
+| CN-MRG-0006 | Library invariant failure or unexpected error |
+
+## Storage (`CN-STO`), see [23](23-STORAGE-FORMAT.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-STO-0001 | Not a notebook, or the manifest is invalid |
+| CN-STO-0002 | Written by a newer major version |
+| CN-STO-0003 | Another process or tab holds the notebook |
+| CN-STO-0004 | Segment header invalid, or name and contents disagree |
+| CN-STO-0005 | Frame damage that is not a torn tail, or a malformed payload |
+| CN-STO-0006 | Sealed segment hash mismatch |
+| CN-STO-0007 | Sequence gap or fork in a device's segments |
+| CN-STO-0008 | Frame over the limit |
+| CN-STO-0009 | Too many files or frames in a segment or document |
+| CN-STO-0010 | Flush failed |
+| CN-STO-0011 | No space or over quota |
+| CN-STO-0012 | Snapshot invalid, or its state hash did not match |
+| CN-STO-0013 | Blob hash or size mismatch, or the source changed while copying |
+| CN-STO-0014 | Blob over the limit |
+| CN-STO-0015 | Unknown `crdt_codec` or `codec_version` in one file |
+| CN-STO-0016 | A segment crashed the import, and was quarantined |
+| CN-STO-0017 | Persistent storage refused or unavailable |
+| CN-STO-0018 | `install_id` differs: a copied or restored folder |
+| CN-STO-0019 | A document is unavailable because every copy failed checks |
+| CN-STO-0020 | Mirror write failed |
+
+## Sync (`CN-SYN`), see [56](56-SYNC-DESIGN.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-SYN-0001 | Storage unreachable |
+| CN-SYN-0002 | Setup probe failed a round trip |
+| CN-SYN-0003 | Sync root missing, or belongs to another workspace |
+| CN-SYN-0004 | Object failed to open: corrupt, truncated or tampered |
+| CN-SYN-0005 | Sequence gap from a device |
+| CN-SYN-0006 | Device fork: clone or restored backup |
+| CN-SYN-0007 | Object or encoding is newer than this app |
+| CN-SYN-0008 | Object exceeds a limit |
+| CN-SYN-0009 | CRDT update rejected by guarded import, quarantined |
+| CN-SYN-0010 | Storage has gone backwards |
+| CN-SYN-0011 | Storage refused the credentials |
+| CN-SYN-0012 | Storage full |
+| CN-SYN-0013 | Storage refused a delete; trimming is paused |
+| CN-SYN-0014 | A device is holding back trimming |
+| CN-SYN-0015 | Restored copy created |
+| CN-SYN-0016 | This device was removed |
+
+## Cryptography (`CN-CRY`), see [56](56-SYNC-DESIGN.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-CRY-0001 | Wrong passphrase or recovery key |
+| CN-CRY-0002 | Recovery key has a bad check or length |
+| CN-CRY-0003 | Key derivation parameters outside bounds |
+| CN-CRY-0004 | Key record is damaged |
+| CN-CRY-0005 | Object needs a key this device does not have |
+| CN-CRY-0006 | Key epoch is lower than one already seen |
+| CN-CRY-0007 | Passphrase below the minimum length |
+
+## Server (`CN-SRV`), see [57](57-SERVER-DESIGN.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-SRV-0001 | Protocol outside the server's window |
+| CN-SRV-0002 | Not signed in, or session expired or revoked |
+| CN-SRV-0003 | Permission refused for this change |
+| CN-SRV-0004 | Not available in this workspace's mode |
+| CN-SRV-0005 | Malformed frame |
+| CN-SRV-0006 | Frame or body too large |
+| CN-SRV-0007 | Rate or quota exceeded |
+| CN-SRV-0008 | Update rejected by guarded import |
+| CN-SRV-0009 | Workspace mode is permanent |
+| CN-SRV-0010 | Not saving: log unavailable |
+| CN-SRV-0011 | Object storage unavailable |
+| CN-SRV-0012 | Page over its size limit |
+| CN-SRV-0013 | AI relay refused by workspace mode or policy |
+| CN-SRV-0014 | Same `client_seq`, different bytes |
+| CN-SRV-0015 | Update depends on state not yet held |
+| CN-SRV-0016 | Client too slow; reconnect to resume |
+| CN-SRV-0017 | Audit delivery failing |
+| CN-SRV-0018 | Identity provider unreachable |
+
+## Desktop shell (`CN-DSK`), see [44](44-DESKTOP-SHELL.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-DSK-0001 | Webview missing or unsupported |
+| CN-DSK-0002 | Webview crashed and was reloaded |
+| CN-DSK-0003 | Workspace already open in another process |
+| CN-DSK-0004 | Disk full: edit is not saved |
+| CN-DSK-0005 | Mirror location unavailable |
+| CN-DSK-0006 | Mirror refused inside the sync root |
+| CN-DSK-0007 | Not enough disk for a download |
+| CN-DSK-0008 | Download hash mismatch |
+| CN-DSK-0009 | Download host or redirect refused |
+| CN-DSK-0010 | Not enough memory for this model |
+| CN-DSK-0011 | Local model keeps crashing |
+| CN-DSK-0012 | Engine stopped unexpectedly |
+| CN-DSK-0013 | Secure key storage unavailable |
+| CN-DSK-0014 | Update signature refused |
+| CN-DSK-0015 | File from the operating system refused |
+| CN-DSK-0016 | Location not supported for notebooks |
+
+## Editor (`CN-EDT`), see [42](42-EDITOR-AND-RENDERING.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-EDT-0001 | Engine refused an op batch. The DOM returns to the projection |
+| CN-EDT-0002 | Unknown `inputType` cancelled |
+| CN-EDT-0003 | Prediction differed from the projection |
+| CN-EDT-0004 | Paste or drop exceeded a limit, or a fragment failed its schema |
+| CN-EDT-0005 | The store refused or failed a write |
+| CN-EDT-0006 | Undo could not apply |
+| CN-EDT-0007 | Engine unreachable (worker died, IPC failed) |
+| CN-EDT-0008 | Text with a lone surrogate reached the bridge |
+
+## Canvas and ink (`CN-INK`), see [43](43-CANVAS-AND-INK.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-INK-0001 | Sample bytes malformed: bad magic, unknown flag, truncated, non-minimal varint, trailing bytes |
+| CN-INK-0002 | Sample count disagrees with the data, or exceeds the limit |
+| CN-INK-0003 | A coordinate is non-finite or out of range |
+| CN-INK-0004 | Fragment range out of bounds, unknown root, or a `parent` cycle |
+| CN-INK-0005 | A file offered as a PDF is not one, or exceeds limits |
+| CN-INK-0006 | PDF is encrypted |
+| CN-INK-0007 | A PDF page failed or timed out in the worker |
+
+## Search (`CN-SCH`), see [60](60-SEARCH-AND-EMBEDDINGS.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-SCH-0001 | Index format or tokeniser version differs |
+| CN-SCH-0002 | Index file fails its hash or parse |
+| CN-SCH-0003 | Query over a limit |
+| CN-SCH-0004 | Too many query terms |
+| CN-SCH-0005 | Prefix expansion over the limit |
+| CN-SCH-0006 | Index still building or changes pending |
+| CN-SCH-0007 | Block text over the indexed length |
+
+## Embeddings (`CN-EMB`), see [60](60-SEARCH-AND-EMBEDDINGS.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-EMB-0001 | Meaning search asked for, no model installed |
+| CN-EMB-0002 | Index tag differs from the active model |
+| CN-EMB-0003 | Vector count or dimensions wrong from the host |
+| CN-EMB-0004 | Non-finite value in a vector |
+| CN-EMB-0005 | Vector file damaged |
+| CN-EMB-0006 | Embedder fails, crashes or runs out of memory |
+| CN-EMB-0007 | Vector store over its limit |
+
+## Knowledge graph (`CN-GRF`), see [61](61-KNOWLEDGE-GRAPH.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-GRF-0001 | Graph larger than the draw limit |
+| CN-GRF-0002 | Tool asks for an unknown node |
+| CN-GRF-0003 | Name matches several nodes |
+| CN-GRF-0004 | Layout hits its iteration limit |
+| CN-GRF-0005 | Depth over the limit |
+| CN-GRF-0006 | Cold scan unfinished |
+| CN-GRF-0007 | A page's projection fails |
+
+## Assistant (`CN-AI`), see [62](62-AI-ASSISTANT-AND-PROVIDERS.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-AI-0001 | No provider configured |
+| CN-AI-0002 | 401 or 403 |
+| CN-AI-0003 | 429 |
+| CN-AI-0004 | 402 or a quota error |
+| CN-AI-0005 | Network failure or DNS |
+| CN-AI-0006 | CORS failure |
+| CN-AI-0007 | 400 or overflow reported |
+| CN-AI-0008 | Malformed provider response |
+| CN-AI-0009 | Tool rounds per turn |
+| CN-AI-0010 | Stop pressed |
+| CN-AI-0011 | Stream ended early |
+| CN-AI-0012 | Provider refusal or content filter |
+| CN-AI-0013 | Encrypted notebook, no opt-in |
+| CN-AI-0014 | Tools unsupported |
+| CN-AI-0015 | 5xx |
+| CN-AI-0016 | CSP blocked the endpoint |
+| CN-AI-0017 | Workspace policy refuses |
+| CN-AI-0018 | Idle stream timeout |
+
+## Local models (`CN-MDL`), see [62](62-AI-ASSISTANT-AND-PROVIDERS.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-MDL-0001 | Not enough disk |
+| CN-MDL-0002 | Hash mismatch |
+| CN-MDL-0003 | Download failed or server refused a range |
+| CN-MDL-0004 | Not a valid GGUF |
+| CN-MDL-0005 | Catalogue entry does not fit this machine |
+| CN-MDL-0006 | Local server failed to start |
+| CN-MDL-0007 | Local server crashed |
+| CN-MDL-0008 | Port check failed: the server accepted a request it should refuse |
+| CN-MDL-0009 | Ollama or external server not found |
+
+## Agent tools (`CN-TOL`), see [63](63-AGENT-TOOLS-AND-MCP.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-TOL-0001 | Unknown tool |
+| CN-TOL-0002 | Arguments fail the schema or a format check |
+| CN-TOL-0003 | Page not found |
+| CN-TOL-0004 | Title matches several |
+| CN-TOL-0005 | Assistant |
+| CN-TOL-0006 | Write in read-only mode |
+| CN-TOL-0007 | Argument over its limit |
+| CN-TOL-0008 | Database not found |
+| CN-TOL-0009 | Page in trash |
+| CN-TOL-0010 | `-ops` refused the batch |
+| CN-TOL-0011 | Tool used on the wrong kind |
+| CN-TOL-0012 | Page moved on since preview |
+| CN-TOL-0013 | Bad cursor |
+| CN-TOL-0014 | Column missing on that database |
+| CN-TOL-0015 | Internal error, panic caught |
+
+## MCP server (`CN-MCP`), see [63](63-AGENT-TOOLS-AND-MCP.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-MCP-0001 | No `--root` |
+| CN-MCP-0002 | Path outside every root |
+| CN-MCP-0003 | Notebook not found or not a notebook |
+| CN-MCP-0004 | Several notebooks, none named |
+| CN-MCP-0005 | Lock held elsewhere |
+| CN-MCP-0006 | Too many open notebooks |
+| CN-MCP-0007 | Notebook format newer than this server |
+
+## Import (`CN-IMP`), see [37](37-IMPORT-FORMATS.md)
+
+| Code | Meaning |
+| --- | --- |
+| CN-IMP-0001 | Format not recognised |
+| CN-IMP-0002 | A file or item over a limit |
+| CN-IMP-0003 | Nesting over the limit |
+| CN-IMP-0004 | Invalid text encoding, not resolved |
+| CN-IMP-0005 | XML has an internal subset or entity declaration |
+| CN-IMP-0006 | Malformed note in an ENEX |
+| CN-IMP-0007 | Resource hash or size mismatch |
+| CN-IMP-0008 | Invalid base64 in a resource |
+| CN-IMP-0009 | Path in a folder or ZIP escapes, or is a symlink |
+| CN-IMP-0010 | Commit failed |
+| CN-IMP-0011 | Cancelled by the person |
+| CN-IMP-0012 | Not enough storage |
+| CN-IMP-0013 | Parser panic contained |
+| CN-IMP-0014 | Element or feature dropped by the allow-list |
+| CN-IMP-0015 | Remote resource not fetched |
+| CN-IMP-0016 | Content converted to a poorer form |
