@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'">
 <title>CasualNote</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css">
@@ -11,31 +12,46 @@
 <body>
 <div id="app">
   <div class="main">
-    <aside id="side" aria-label="Workspace">
-      <div class="ws">CasualNote</div>
-      <button class="nav" id="searchBtn"><span data-i="magnifying-glass"></span><span data-t="Search">Search</span><kbd>Ctrl K</kbd></button>
-      <button class="nav" id="newBtn"><span data-i="plus"></span><span data-t="New page">New page</span></button>
-      <button class="nav" id="settingsBtn"><span data-i="gear-six"></span><span data-t="Settings">Settings</span></button>
-      <div id="tree"></div>
+    <aside id="side" role="navigation" data-tl="Workspace" inert>
+      <div class="wshead">
+        <div class="ws">CasualNote</div>
+        <button class="ibtn" id="collapseBtn" data-tl="Hide sidebar" data-keys="mod+\"><span data-i="sidebar-simple"></span></button>
+      </div>
+      <button class="nav" id="searchBtn"><span data-i="magnifying-glass"></span><span data-t="Search">Search</span><kbd data-kbd="mod+k"></kbd></button>
+      <button class="nav" id="newBtn"><span data-i="plus"></span><span data-t="New page">New page</span><kbd data-kbd="new"></kbd></button>
+      <div id="tree" role="tree" data-tl="Pages"></div>
+      <div class="sidefoot">
+        <button class="nav" id="trashBtn"><span data-i="trash"></span><span data-t="Trash">Trash</span><span class="n0" id="trashCount"></span></button>
+        <button class="nav" id="settingsBtn"><span data-i="gear-six"></span><span data-t="Settings">Settings</span><kbd data-kbd="mod+,"></kbd></button>
+      </div>
     </aside>
+    <div class="split" id="sideSplit" role="separator" aria-orientation="vertical" tabindex="0" data-tl="Resize sidebar" hidden></div>
     <section id="center">
-      <div id="tabs" role="tablist" aria-label="Open pages"></div>
+      <div id="tabbar" inert>
+        <div id="tabs" role="tablist" data-tl="Open pages"></div>
+        <button class="tabact" id="tabMore" data-tl="All open pages" hidden><span data-i="caret-down"></span></button>
+        <button class="tabact" id="tabAdd" data-tl="New page" data-keys="new"><span data-i="plus"></span></button>
+      </div>
+      <div id="banner" role="alert" hidden></div>
       <div id="paneWrap">
-        <div class="bar">
-          <button class="ibtn" id="menuBtn" aria-label="Show pages"><span data-i="list"></span></button>
+        <div class="bar" inert>
+          <button class="ibtn" id="menuBtn" data-tl="Show pages" data-keys="mod+\"><span data-i="list"></span></button>
           <div class="crumbs" id="crumbs"></div>
-          <button class="ibtn" id="favBtn" aria-label="Favorite"></button>
-          <button class="ibtn" id="moreBtn" aria-label="More"><span data-i="dots-three"></span></button>
-          <button class="ibtn" id="rightBtn" aria-label="Toggle side panel"><span data-i="sidebar-simple"></span></button>
+          <button class="ibtn" id="favBtn" data-tl="Favorite"></button>
+          <button class="ibtn" id="moreBtn" data-tl="More" aria-haspopup="menu"><span data-i="dots-three"></span></button>
+          <button class="ibtn" id="rightBtn" data-tl="Toggle side panel" data-keys="mod+shift+\" aria-pressed="false"><span data-i="sidebar-simple"></span></button>
         </div>
-        <div id="content"></div>
+        <div id="content" role="main"><p class="boot" id="boot" role="status">Opening your notes</p></div>
       </div>
     </section>
-    <aside id="right" aria-label="Page details">
+    <div class="split" id="rightSplit" role="separator" aria-orientation="vertical" tabindex="0" data-tl="Resize side panel" hidden></div>
+    <aside id="right" data-tl="Page details" hidden>
+      <button class="ibtn" id="rightClose" data-tl="Close"><span data-i="x"></span></button>
       <div id="rpDetails">
         <div class="rp"><h4 data-t="Outline">Outline</h4><div id="outline"></div></div>
       </div>
     </aside>
+    <div id="scrim" hidden></div>
   </div>
   <footer class="status">
     <span class="proto" id="error"></span>
@@ -43,12 +59,19 @@
     <span id="saved" role="status"></span>
   </footer>
 </div>
-<div class="fmt" id="fmt" hidden>
-  <button data-f="bold" aria-label="Bold"><span data-i="text-b"></span></button>
-  <button data-f="italic" aria-label="Italic"><span data-i="text-italic"></span></button>
-  <button data-f="code" aria-label="Code"><span data-i="code"></span></button>
-  <button data-f="highlight" aria-label="Highlight"><span data-i="highlighter"></span></button>
+<div class="fmt" id="fmt" role="toolbar" data-tl="Format" hidden>
+  <button data-f="bold" data-tl="Bold" data-keys="mod+b"><span data-i="text-b"></span></button>
+  <button data-f="italic" data-tl="Italic" data-keys="mod+i"><span data-i="text-italic"></span></button>
+  <button data-f="code" data-tl="Code" data-keys="mod+e"><span data-i="code"></span></button>
+  <button data-f="highlight" data-tl="Highlight" data-keys="mod+shift+h"><span data-i="highlighter"></span></button>
 </div>
+<div id="mobar" role="toolbar" data-tl="Block actions" hidden>
+  <button class="ibtn" id="moMenu" data-tl="Move or change block"><span data-i="dots-six-vertical"></span></button>
+  <button class="ibtn" id="moAdd" data-tl="Add block"><span data-i="plus"></span></button>
+  <button class="ibtn" id="moUndo" data-tl="Undo"><span data-i="arrow-counter-clockwise"></span></button>
+  <button class="ibtn" id="moRedo" data-tl="Redo"><span data-i="arrow-clockwise"></span></button>
+</div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
 <script type="module" src="app.js"></script>
 </body>
 </html>

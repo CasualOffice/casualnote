@@ -1,0 +1,120 @@
+/* Refines the prototype's canvas rules in style.css. Tokens only. One radius, no resting shadow. */
+
+.cv-mode[hidden] { display: none; }
+.cv-mode { margin-inline-end: 6px; margin-right: 0; }
+.cv-mode button { height: 24px; font-size: .8125rem; }
+.cv-mode button:first-child { border-start-start-radius: var(--radius); border-end-start-radius: var(--radius); }
+.cv-mode button:last-child { border-start-end-radius: var(--radius); border-end-end-radius: var(--radius); }
+.cv-mode button:hover:not([aria-pressed="true"]) { background: var(--hover); }
+
+.cv-truth { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 68ch; margin-block-start: 16px; padding-block-start: 8px; border-block-start: 1px solid var(--line); font-size: .8125rem; color: var(--muted); }
+.cv-truth button { color: var(--fg); text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
+.cv-truth button:hover { color: var(--accent); text-decoration-color: var(--accent); }
+
+/* The surface. Tools mirror with the interface, and only the world stays left to right. */
+.canvas.cv { direction: inherit; isolation: isolate; overflow: clip; background-color: var(--bg); cursor: grab; outline: none; }
+.cv .world { direction: ltr; }
+.cv.nogrid { background-image: none; }
+.cv.moving .world { will-change: transform; }
+.cv.draw { cursor: crosshair; }
+.cv.t-text { cursor: text; }
+.cv.t-eraser { cursor: none; }
+.cv.over-arrow { cursor: move; }
+.cv.spacepan, .cv.spacepan .world, .cv.spacepan .world * { cursor: grab; }
+.cv.grabbing, .cv.grabbing * { cursor: grabbing !important; }
+.cv.grabbing, .cv.moving { user-select: none; -webkit-user-select: none; }
+@media (hover: none) { .cv.t-eraser { cursor: default; } }
+
+.cv-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.cv-hi { mix-blend-mode: var(--hi-blend); }
+.cv-wet.hi { opacity: .55; mix-blend-mode: var(--hi-blend); }
+.cv-ring { position: absolute; left: 0; top: 0; width: 22px; height: 22px; box-sizing: border-box; border: 1px solid var(--muted); border-radius: 50%; pointer-events: none; }
+.cv-ring[hidden] { display: none; }
+
+.cv-hint { position: absolute; inset-inline: 0; bottom: 16px; padding-inline: 16px; text-align: center; font-size: .8125rem; color: var(--muted); pointer-events: none; user-select: none; -webkit-user-select: none; }
+.cv-hint[hidden] { display: none; }
+
+/* Note card */
+.cv .note { cursor: auto; }
+.cv .note.lifted { box-shadow: var(--shadow); }
+.cv .note .grip { border-block-end: 1px solid transparent; }
+.cv .note .grip:active { cursor: grabbing; }
+.cv .note .doc { padding: 0; max-width: none; }
+.cv .note .title { max-width: none; }
+.cv .note .b { max-width: 68ch; }
+.cv .note .rz { right: -5px; bottom: -5px; cursor: ew-resize; }
+.cv .note:focus-within .rz { display: block; }
+.cv.draw .note .rz { display: none; }
+
+/* Handles and outlines keep their size at any zoom. */
+.cv .rz { transform: scale(calc(1 / var(--cz, 1))); transform-origin: 50% 50%; z-index: 1; }
+.cv .rz::before { content: ""; position: absolute; inset: -8px; }
+.cv .ci.sel, .cv .ci:focus-visible { outline: calc(1.5px / var(--cz, 1)) solid var(--accent); outline-offset: calc(2px / var(--cz, 1)); }
+@media (hover: none) { .cv .note .rz { display: block; } }
+
+/* Items */
+.cv .ci { user-select: none; -webkit-user-select: none; }
+.cv .ci .txt { cursor: inherit; max-height: 100%; overflow: hidden; }
+.cv .ci.sel { cursor: move; }
+.cv .ci.lifted { box-shadow: var(--shadow); cursor: grabbing; }
+.cv .ci.editing { cursor: text; }
+.cv .ci.editing .txt { cursor: text; user-select: text; -webkit-user-select: text; min-height: 1.4em; }
+.cv .ci.editing .txt:empty::before { content: attr(data-ph); color: var(--muted); pointer-events: none; }
+.cv .ci.sticky.editing .txt:empty::before { color: inherit; opacity: .6; }
+.cv .ci.text { align-items: flex-start; justify-content: flex-start; }
+.cv .ci.text:not(.sel):not(.editing) { outline: none; }
+.cv .ci.c-other { background: var(--sticky-2); }
+.cv .ci.cv-unknown { background: var(--tint); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+.cv .ci.cv-preview { pointer-events: none; opacity: .75; }
+.cv .ci.rect .txt, .cv .ci.ellipse .txt { color: var(--fg); }
+.cv .ci.text .txt { color: var(--fg); }
+.cv.draw .ci { cursor: inherit; }
+
+/* Dock */
+.cv .dock { left: auto; inset-inline-start: 12px; }
+.cv .dock button { position: relative; touch-action: manipulation; }
+.cv .dock button:first-child { border-start-start-radius: var(--radius); border-start-end-radius: var(--radius); }
+.cv .dock button:last-child { border-end-start-radius: var(--radius); border-end-end-radius: var(--radius); }
+.cv .dock button:focus-visible, .cv .dock-sub button:focus-visible, .cv .zoom button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 1; }
+.dock-sub { position: absolute; inset-inline-start: 54px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 2px; padding: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); z-index: 5; }
+.dock-sub[hidden] { display: none; }
+.dock-sub .sw { position: relative; width: 28px; height: 28px; display: grid; place-items: center; }
+.dock-sub .sw:hover { background: var(--hover); }
+.dock-sub .sw[aria-pressed="true"] { background: var(--active); }
+.dock-sub .sw i { display: block; width: 14px; height: 14px; border-radius: var(--radius); }
+.dock-sub .k-ink i { background: var(--ink); }
+.dock-sub .k-red i { background: var(--ink-red); }
+.dock-sub .k-blue i { background: var(--ink-blue); }
+.dock-sub .k-amber i { background: var(--sticky); border: 1px solid var(--line); box-sizing: border-box; }
+.dock-sub .k-grey i { background: var(--sticky-2); border: 1px solid var(--line); box-sizing: border-box; }
+
+/* Tooltips say the name and the key, at once, because the dock is icons only. */
+.cv [data-tip]::after { content: attr(data-tip); position: absolute; display: none; white-space: pre; padding: 3px 7px; font-size: .75rem; line-height: 1.4; background: var(--strong); color: var(--bg); border-radius: var(--radius); pointer-events: none; z-index: 6; }
+.cv .dock [data-tip]::after, .cv .dock-sub [data-tip]::after { inset-inline-start: calc(100% + 6px); top: 50%; transform: translateY(-50%); }
+.cv .zoom [data-tip]::after { bottom: calc(100% + 6px); inset-inline-end: 0; }
+@media (hover: hover) { .cv [data-tip]:hover::after { display: block; } }
+.cv.grabbing [data-tip]::after, .cv.moving [data-tip]::after { display: none; }
+
+/* Zoom */
+.cv .zoom { right: auto; inset-inline-end: 12px; height: 28px; cursor: default; }
+.cv .zoom button { position: relative; height: 100%; display: inline-grid; place-items: center; padding: 0 8px; font-size: .75rem; }
+.cv .zoom .i { font-size: 12px; }
+.cv .zoom .cv-pct { min-width: 44px; padding: 0 2px; }
+.cv .zoom .cv-pct span { min-width: 0; color: inherit; }
+.cv .zoom .cv-fit { border-inline-start: 1px solid var(--line); }
+.cv .zoom button:first-child { border-start-start-radius: var(--radius); border-end-start-radius: var(--radius); }
+.cv .zoom button:last-child { border-start-end-radius: var(--radius); border-end-end-radius: var(--radius); }
+
+@media (max-width: 760px) {
+  .cv .dock { top: auto; bottom: max(12px, env(safe-area-inset-bottom, 0px)); transform: none; left: auto; inset-inline-start: 12px; max-width: calc(100% - 24px); box-sizing: border-box; scrollbar-width: none; }
+  .cv .dock .sep { width: 1px; height: auto; align-self: stretch; }
+  .dock-sub { top: auto; bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 42px); inset-inline-start: 12px; transform: none; flex-direction: row; }
+  .cv .zoom { top: 12px; bottom: auto; }
+  .cv-hint { bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 46px); }
+  .cv .ci .rz, .cv .note .rz { width: 14px; height: 14px; right: -7px; bottom: -7px; }
+  .cv-mode button { padding: 3px 8px; }
+}
+
+@media (forced-colors: active) {
+  .cv .dock button[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+}

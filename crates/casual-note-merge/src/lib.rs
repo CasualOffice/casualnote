@@ -422,6 +422,20 @@ impl Workspace {
         Ok(old)
     }
 
+    /// The link at a UTF-16 offset, if any.
+    pub fn link_at(&self, page: &str, block: &str, at: usize) -> Result<Option<String>, Error> {
+        let read = read_block(block, &self.record(page, block)?);
+        let mut units = 0;
+        for run in &read.runs {
+            let next = units + run.text.encode_utf16().count();
+            if at >= units && at < next {
+                return Ok(run.link.clone());
+            }
+            units = next;
+        }
+        Ok(None)
+    }
+
     /// Sets or clears a link over a UTF-16 range.
     pub fn set_link(
         &mut self,
@@ -689,6 +703,17 @@ impl Workspace {
         Ok(())
     }
 
+    /// Renames a column, and returns the old name.
+    pub fn set_column_name(&mut self, id: &str, column: &str, name: &str) -> Result<String, Error> {
+        let doc = self.db(id)?.clone();
+        let record = child_map(&doc.get_map("columns"), column)
+            .ok_or_else(|| Error::NotFound(column.into()))?;
+        let old = string(&record, "name").unwrap_or_default();
+        record.insert("name", name).map_err(bad)?;
+        doc.commit();
+        Ok(old)
+    }
+
     /// Hides or restores a column, and returns the old state. Its cells always stay.
     pub fn set_column_hidden(
         &mut self,
@@ -928,9 +953,12 @@ fn read_block(id: &str, record: &LoroMap) -> Block {
 }
 
 fn write_runs(text: &LoroText, runs: &[Run]) -> Result<(), Error> {
+    // All the text goes in first. A mark expands to text inserted after it, so writing run by run
+    // would spread each run's marks onto the runs that follow.
+    let whole: String = runs.iter().map(|r| r.text.as_str()).collect();
+    text.insert(0, &whole).map_err(bad)?;
     let mut at = 0;
     for run in runs {
-        text.insert(at, &run.text).map_err(bad)?;
         let end = at + run.text.chars().count();
         if at < end {
             for mark in &run.marks {

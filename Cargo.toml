@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/casual-note-model", "crates/casual-note-merge", "crates/casual-note-ops", "crates/casual-note-wasm"]
+members = ["crates/casual-note-model", "crates/casual-note-merge", "crates/casual-note-ops", "crates/casual-note-wasm", "crates/casual-note-search", "crates/casual-note-graph", "crates/casual-note-package", "crates/casual-note-tools", "server/casual-note-mcp"]
 
 [workspace.package]
 edition = "2024"

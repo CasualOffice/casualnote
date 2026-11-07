@@ -1,0 +1,42 @@
+/* Links, backlinks, tags, embeds. Tokens and logical properties only. */
+.ref.gone { cursor: text; }
+.ref.gone:hover { color: var(--faint); text-decoration-color: currentColor; }
+
+/* The keyboard stop of a block that is not text. */
+.b > .t.bfocus { flex: 0 0 0; width: 0; height: 0; min-width: 0; overflow: hidden; }
+.bfocus:focus + .embedbox, .bfocus:focus + .db { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
+
+.bl { padding-block: 4px; padding-inline: 4px; margin-inline: -4px; width: calc(100% + 8px); box-sizing: border-box; color: var(--fg); overflow: hidden; }
+.bl > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bl:hover { background: var(--hover); color: var(--fg); }
+
+#tagList { flex: none; max-height: 30%; display: flex; flex-direction: column; min-height: 0; }
+.taglist { overflow: auto; min-height: 0; }
+#tagList .row { padding-inline: 8px; }
+#tagList .tagn { color: var(--faint); font-size: .75rem; font-variant-numeric: tabular-nums; }
+
+.mi.refused { color: var(--faint); cursor: not-allowed; }
+.mi.refused:hover { background: none; }
+.mi.refused .gl { color: inherit; }
+
+.embedbox { flex: 1; min-width: 0; font-size: .9375rem; }
+.embedbox header > span:last-child:not(:first-child) { flex: none; margin-inline-start: 12px; }
+.embedopen { min-width: 0; padding: 1px 4px; margin-inline-start: -4px; }
+.embedopen:hover { background: var(--hover); }
+.embedopen span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.embedbox.broken { border-style: dashed; }
+.embedmsg { margin: 2px 0 0; color: var(--muted); font-size: .8125rem; }
+.embedbox .line { display: flex; gap: 6px; align-items: baseline; }
+.embedbox .lt { min-width: 0; flex: 1; white-space: pre-wrap; }
+.embedbox .lt b { font-weight: 600; }
+.embedbox .lt code, .embedbox .k-code .lt { font: .86em var(--mono); background: var(--tint); padding-block: 1px; padding-inline: 4px; border-radius: var(--radius); }
+.embedbox .lt mark { background: var(--mark); color: inherit; }
+.embedbox .mk { min-width: 14px; flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.embedbox .line input { margin: 0; accent-color: var(--strong); align-self: center; }
+.embedbox .done .lt { color: var(--faint); text-decoration: line-through; }
+.embedbox .k-quote .lt { color: var(--muted); padding-inline-start: 12px; }
+.embedbox .k-callout { background: var(--tint); border-radius: var(--radius); padding-block: 4px; padding-inline: 8px; }
+.embedbox.nested { margin-block: 6px; }
+.embedhr { border: 0; border-block-start: 1px solid var(--line); margin-block: 8px; }
+.dbline { justify-content: space-between; }
+.dbline small { color: var(--faint); font-size: .75rem; flex: none; }

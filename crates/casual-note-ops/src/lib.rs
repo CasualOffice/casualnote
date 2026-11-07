@@ -105,6 +105,11 @@ pub enum Op {
         id: String,
         column: Column,
     },
+    SetColumnName {
+        id: String,
+        column: String,
+        name: String,
+    },
     SetColumnHidden {
         id: String,
         column: String,
@@ -234,13 +239,14 @@ pub fn apply(ws: &mut Workspace, op: &Op) -> Result<Op, Error> {
             end,
             target,
         } => {
+            let old = ws.link_at(page, block, *start)?;
             ws.set_link(page, block, *start, *end, target.as_deref())?;
             Op::SetLink {
                 page: page.clone(),
                 block: block.clone(),
                 start: *start,
                 end: *end,
-                target: None,
+                target: old,
             }
         }
         Op::SetView { page, view } => Op::SetView {
@@ -299,6 +305,11 @@ pub fn apply(ws: &mut Workspace, op: &Op) -> Result<Op, Error> {
                 hidden: true,
             }
         }
+        Op::SetColumnName { id, column, name } => Op::SetColumnName {
+            id: id.clone(),
+            column: column.clone(),
+            name: ws.set_column_name(id, column, name)?,
+        },
         Op::SetColumnHidden { id, column, hidden } => Op::SetColumnHidden {
             id: id.clone(),
             column: column.clone(),
@@ -1030,6 +1041,53 @@ mod tests {
         let page = a.page("p").unwrap();
         assert_eq!(page.blocks[0].runs[0].link.as_deref(), Some("q"));
         assert_eq!(page.blocks[1].target.as_deref(), Some("q"));
+    }
+
+    #[test]
+    fn redo_restores_a_link_and_undo_restores_the_previous_one() {
+        let mut a = seeded(1);
+        let link = |target: Option<&str>| Op::SetLink {
+            page: "p".into(),
+            block: "a".into(),
+            start: 0,
+            end: 5,
+            target: target.map(Into::into),
+        };
+        let undo = apply(&mut a, &link(Some("q"))).unwrap();
+        assert_eq!(undo, link(None));
+        let redo = apply(&mut a, &undo).unwrap();
+        assert_eq!(redo, link(Some("q")));
+        apply(&mut a, &redo).unwrap();
+        assert_eq!(
+            a.page("p").unwrap().blocks[0].runs[0].link.as_deref(),
+            Some("q")
+        );
+        let back = apply(&mut a, &link(Some("r"))).unwrap();
+        assert_eq!(back, link(Some("q")));
+    }
+
+    #[test]
+    fn a_column_can_be_renamed_and_undone() {
+        let mut a = seeded(1);
+        apply(
+            &mut a,
+            &Op::CreateDatabase {
+                database: empty_db("d"),
+            },
+        )
+        .unwrap();
+        let undo = apply(
+            &mut a,
+            &Op::SetColumnName {
+                id: "d".into(),
+                column: "owner".into(),
+                name: "负责人".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(a.database("d").unwrap().columns[0].name, "负责人");
+        apply(&mut a, &undo).unwrap();
+        assert_eq!(a.database("d").unwrap().columns[0].name, "Owner");
     }
 
     #[test]

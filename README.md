@@ -2,7 +2,7 @@
 
 **A multilingual, local-first workspace for documents, databases, canvases and pen notes, with a knowledge graph and an optional AI assistant you control. Apache-2.0 all the way through.**
 
-> **Early, and it runs.** A Rust engine and a web editor work today. Databases, canvas, the knowledge graph, the assistant, sync and the desktop app are not built yet. See [Status](#status).
+> **Early, and it runs.** Documents, databases, canvas and pen, links, knowledge graph, search, export and an assistant with your own provider all work in a browser. The desktop app, sync and server are not built yet. See [Status](#status).
 
 ## Why
 
@@ -21,8 +21,9 @@
 | Export format, version 1 | Draft spec and schema |
 | Standalone package reader | Works, with tests |
 | Engine: pages, blocks, undo, merging | **Works, with tests** |
-| Web editor: blocks, slash menu, marks, search, six interface languages, saves in the browser | **Works, tested in Chrome** |
-| Databases, canvas, links, knowledge graph, assistant, MCP, package export from the engine | Next |
+| Web app: blocks, links, backlinks, embeds, databases, canvas and pen, search, knowledge graph, export and import, six interface languages | **Works, tested in Chrome** |
+| Assistant with your own provider, MCP server | **Works, tested with a fake provider only** |
+| Real embeddings, durable log storage | Next |
 | Desktop app, sync, server | Not started |
 
 Nothing has been measured. Performance figures in the docs are targets.

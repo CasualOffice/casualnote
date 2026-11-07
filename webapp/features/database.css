@@ -1,0 +1,95 @@
+/* Databases. Refines the .db, .grid, .board, .lane and .card rules in style.css. Tokens and logical properties only. */
+.b.db { margin-block: 12px 8px; display: flex; }
+.b.db > .db { margin-block: 0; flex: 1; }
+
+.dbpage { padding-block: 28px 120px; padding-inline: 72px 40px; box-sizing: border-box; }
+.dbtitle { display: block; width: 100%; max-width: none; box-sizing: border-box; border: 0; background: none; padding: 0; margin-block-end: 16px; font-family: inherit; }
+.dbtitle::placeholder { color: var(--faint); }
+
+.dbname:hover { background: var(--hover); }
+.dbname::placeholder { color: var(--faint); font-weight: 400; }
+.vtabs button:focus-visible, .newbtn:focus-visible { outline-offset: 1px; }
+.vtabs .i { font-size: 14px; }
+.newbtn:hover { filter: none; background: color-mix(in srgb, var(--accent) 86%, var(--fg)); }
+.hiddenbtn { display: inline-flex; gap: 5px; align-items: center; padding: 2px 8px; color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; }
+.hiddenbtn:hover { background: var(--hover); color: var(--fg); }
+.hiddenbtn .i { font-size: 14px; }
+.hiddenbtn { margin-inline-start: auto; }
+.hiddenbtn + .newbtn { margin-inline-start: 0; }
+
+/* Table */
+.grid th { padding-block: 6px; }
+.grid th:first-child { padding-inline-start: 0; }
+.grid th.cname, .grid td.cname { min-width: 180px; }
+.grid th.cstatus, .grid td.cstatus { width: 1%; white-space: nowrap; }
+.grid th.cend, .grid td.cend { width: 28px; padding: 0; text-align: end; }
+.grid th:has(.colbtn) { padding-block: 2px; padding-inline: 2px; }
+.colbtn { display: block; width: 100%; text-align: start; padding-block: 4px; padding-inline: 6px; color: var(--faint); font-size: .8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.colbtn:hover { background: var(--hover); color: var(--fg); }
+.coladd { width: 26px; height: 26px; display: inline-grid; place-items: center; color: var(--faint); }
+.coladd:hover { background: var(--hover); color: var(--fg); }
+.grid input:hover { background: var(--tint); }
+.grid input:focus { background: var(--hover); }
+.grid input::placeholder { color: var(--faint); }
+.grid input.k-number { font-variant-numeric: tabular-nums; }
+.grid input.k-date { font-variant-numeric: tabular-nums; min-width: 132px; }
+.grid input[data-empty] { color: var(--faint); }
+.grid input[data-empty]:focus { color: var(--fg); }
+.grid input[aria-invalid="true"], .cardedit[aria-invalid="true"], .colname[aria-invalid="true"] { color: var(--ink-red); text-decoration: underline; text-decoration-color: var(--ink-red); }
+.grid .pcell { padding-block: 3px; padding-inline: 4px; }
+.stbtn { padding-block: 3px; padding-inline: 4px; display: inline-flex; }
+.stbtn:hover { background: var(--hover); }
+.rowdel:hover { background: var(--hover); color: var(--ink-red); }
+.rowdel .i { font-size: 14px; }
+.coladd:focus-visible, .rowdel:focus-visible { outline-offset: -2px; }
+.dbempty { margin: 0; padding-block: 10px; color: var(--muted); font-size: .8125rem; }
+.addrow { display: inline-flex; gap: 6px; align-items: center; width: auto; padding-block: 4px; padding-inline: 4px; margin-inline-start: -4px; color: var(--muted); font-size: .8125rem; align-self: flex-start; }
+.addrow:hover { background: var(--hover); color: var(--fg); }
+.addrow .i { font-size: 14px; }
+.tablewrap { border-block-end: 1px solid var(--line); margin-block-end: 4px; }
+.dberror { margin: 0; padding-block: 6px; display: flex; gap: 6px; align-items: baseline; color: var(--ink-red); font-size: .8125rem; }
+.dberror .i { font-size: 13px; align-self: center; }
+
+/* The add column form */
+.colform { width: 260px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.colform .field { margin-block-start: 0; }
+.colform .field input, .colform .langsel { width: 100%; box-sizing: border-box; }
+.colfoot { display: flex; justify-content: flex-end; gap: 6px; padding-block-start: 2px; }
+.btn:hover { background: var(--hover); }
+.btn.primary:hover { background: color-mix(in srgb, var(--accent) 86%, var(--fg)); }
+
+/* Board */
+.board { padding-block-end: 4px; }
+.lane { min-width: 0; }
+.lane header .st { font-size: .8125rem; }
+.lane .addrow { padding-block: 3px; padding-inline: 4px; }
+.laneempty { margin: 0; padding-block: 2px 4px; color: var(--muted); font-size: .8125rem; }
+.lane.over .laneempty { color: var(--fg); }
+.card { position: relative; user-select: none; -webkit-user-select: none; }
+.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.card b { padding-inline-end: 20px; }
+.card b.unnamed { color: var(--faint); }
+.card small:has(> span:first-child:empty) { justify-content: flex-end; }
+.card.lifted { opacity: .35; }
+.card.lifted .carddel, .card.lift .carddel { opacity: 0; }
+.card.lift { cursor: grabbing; }
+.card.editing, .card.adding { cursor: text; border-color: var(--accent); padding-block: 6px; touch-action: auto; }
+.card.editing .carddel { display: none; }
+.cardedit { width: 100%; box-sizing: border-box; border: 0; background: none; padding: 2px 0; outline: none; }
+.cardedit::placeholder { color: var(--faint); }
+.carddel { position: absolute; inset-block-start: 4px; inset-inline-end: 4px; width: 22px; height: 22px; }
+.card:hover .carddel, .card:focus-within .carddel { opacity: 1; }
+.card:focus-visible .carddel { opacity: 1; }
+
+@media (hover: none) { .rowdel { opacity: 1; } }
+@media (max-width: 760px) {
+  .dbpage { padding-block: 12px 120px; padding-inline: 16px; }
+  .grid th.cname, .grid td.cname { min-width: 140px; }
+  .newbtn, .hiddenbtn { padding-block: 4px; }
+  .dbhead .dbname { flex: 1 1 80px; }
+  .vtabs button span { display: none; }
+  .vtabs button { padding: 5px 8px; }
+  .board { grid-auto-columns: minmax(78vw, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .card.lift { transition: none; } }
+.colrename { width: 100%; box-sizing: border-box; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--bg); color: var(--fg); padding: 1px 4px; font: inherit; }

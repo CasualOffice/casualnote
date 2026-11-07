@@ -68,9 +68,9 @@
 
 | ID | Title | St | Sev | Mechanism | Gate |
 | --- | --- | --- | --- | --- | --- |
-| MOD-01 | `-model` types and invariants | In progress | P0 | Pages, blocks, runs and marks in `casual-note-model`. Databases, canvas and links remain | Property tests |
+| MOD-01 | `-model` types and invariants | In progress | P0 | Pages, blocks, marks, links, embeds, databases, canvas, ink. Attachments, comments and nesting remain | Property tests |
 | MOD-02 | Schema repair as a pure projection | Open | P0 | Repairs never write back | Generated invalid states repair the same way on every replica |
-| OPS-01 | Closed op set | In progress | P0 | 11 ops with inverses in `casual-note-ops`, tested. Text ops use UTF-16 offsets, not anchors yet (ADR-031 remains). Databases and canvas ops remain | Every op has a validation test |
+| OPS-01 | Closed op set | In progress | P0 | Closed op set covering pages, blocks, text, links, canvas, ink and databases, with inverses, tested. Text ops use UTF-16 offsets, not anchors yet (ADR-031 remains) | Every op has a validation test |
 | OPS-02 | Undo with inverses over merged state | In progress | P0 | Undo replays inverses. Concurrent-undo cases not tested | Generated concurrent undo tests |
 | MRG-01 | `-merge` adapter over Loro | In progress | P0 | `casual-note-merge` over Loro 1.17.1, one document per page plus a tree. Three-device convergence tested. `SPK-01` still not run | Only crate naming `loro` |
 | MRG-02 | Guarded CRDT import | In progress | P0 | Bounded container, byte-flip test. Size limits and panic isolation remain | Hostile updates refused, none panic |
@@ -81,8 +81,8 @@
 | STO-04 | Readable mirror | Open | P1 | One-way, regenerated | Deleting it loses nothing |
 | STO-05 | Version history and restore | Open | P1 | | Restore round trip |
 | PKG-04 | `-package` copied from OpenCalc | Open | P0 | Provenance recorded | Hostile ZIP fixtures |
-| PKG-05 | Engine package writer | Open | P0 | | `tools/cnotepack.py` and schema pass. Bytes match on native and wasm |
-| PKG-06 | Engine package reader and import report | Open | P0 | All `CN-PKG-*` | Fixture per code, fuzz target |
+| PKG-05 | Engine package writer | Done | P0 | `crates/casual-note-package`. `tools/cnotepack.py` accepts its output, and export, import, export gives identical bytes. Whole-package native and wasm parity not tested | `tools/cnotepack.py` and schema pass. Bytes match on native and wasm |
+| PKG-06 | Engine package reader and import report | Done | P0 | Import with report and copies on a clash. Assets and extensions are reported, not imported | Fixture per code, fuzz target |
 | SDK-01 | `-sdk` facade, first surface | Open | P1 | [55](55-SDK-AND-EMBEDDING.md) | Used by tests |
 
 ## Phase 2 — Web editor
@@ -93,27 +93,29 @@
 | WEB-02 | App shell: sidebar, tabs, panels | In progress | P0 | Sidebar, tabs, outline, settings. Real browser test, no accessibility audit yet | Keyboard and screen reader pass |
 | WEB-03 | Block editor on the real DOM | In progress | P0 | Op-driven DOM editing, including composition handling. Not measured against QR-1, and real input methods not tested (`SPK-02`) | QR-1 |
 | WEB-04 | Slash menu, Markdown shortcuts, formatting | In progress | P1 | Slash menu, Markdown shortcuts, marks work. Links remain | Interaction tests |
-| WEB-05 | Page links, backlinks, outline, tags | Open | P1 | | Interaction tests |
+| WEB-05 | Page links, backlinks, outline, tags | Done | P1 | `features/links.js`: `[[` picker, backlinks, tags. Outline in the app | Interaction tests |
 | WEB-06 | Service worker, offline start | Open | P1 | | Loads with the network off |
+| PAG-01 | Reorder pages, and delete forever | Open | P2 | No op yet. Nesting works | Merge test |
+| AST-06 | Try the assistant against real providers | Open | P0 | Only a fake provider so far, so real streaming and browser access are unverified, read with `FND-65` | Owner or test key |
 | FIL-01 | Attachments: chunks, resume, content hash. Moved from Phase 4, since paste and canvas need it | Open | P0 | [23](23-STORAGE-FORMAT.md) | Resume after injected failure |
-| DB-01 | Databases: model and operations | Open | P0 | [22](22-DATA-MODEL.md) | Merge tests |
-| DB-02 | Table and board views | Open | P1 | | Interaction tests |
+| DB-01 | Databases: model and operations | Done | P0 | `crates/casual-note-merge`, `-ops`. Cells from two devices both survive. Removing a column hides it | Merge tests |
+| DB-02 | Table and board views | Done | P1 | `webapp/features/database.js`: table and board, with drag, keyboard and rename. Real browser tests | Interaction tests |
 | I18N-01 | Message catalogue with ICU MessageFormat | In progress | P0 | Six interface languages from a simple table, not ICU MessageFormat yet. Drafts, unreviewed | Pseudo-locale finds no raw string |
 | I18N-02 | Logical CSS, right-to-left | In progress | P0 | Logical CSS, Arabic mirrors. No gate yet | CSS gate refuses physical properties. Arabic run passes |
 | I18N-03 | Input-method support | Open | P0 | | Composition tests in Chinese, Japanese, Korean |
 | I18N-04 | Fonts by script | Open | P1 | | Every launch script renders |
 | I18N-05 | Translation workflow and native review | Open | P1 | | A language is called supported only after review |
-| A11Y-01 | Accessibility baseline | Open | P0 | QR-5 | Audit passes |
+| A11Y-01 | Accessibility baseline | In progress | P0 | Contrast meets AA by calculation, with tree and menu roles. No real screen reader test or audit | Audit passes |
 
 ## Phase 3 — Canvas and ink
 
 | ID | Title | St | Sev | Mechanism | Gate |
 | --- | --- | --- | --- | --- | --- |
-| CNV-01 | Canvas view over a page | Open | P0 | [43](43-CANVAS-AND-INK.md) | Switching views loses nothing |
-| CNV-02 | Sticky notes, shapes, arrows, text | Open | P1 | | Merge tests |
-| INK-01 | Stroke model and outline | Open | P1 | Port the MIT stroke algorithm | Golden outlines |
-| INK-02 | Pen input, pressure, palm rejection | Blocked | P1 | Waits on `SPK-03` | Owner judges on a device |
-| INK-03 | Partial erase | Open | P2 | | Merge tests |
+| CNV-01 | Canvas view over a page | Done | P0 | `features/canvas.js`: page and canvas switch, note card edits real blocks, pan and zoom | Switching views loses nothing |
+| CNV-02 | Sticky notes, shapes, arrows, text | Done | P1 | Sticky notes, shapes, arrows, text. Real pointer event tests | Merge tests |
+| INK-01 | Stroke model and outline | Done | P1 | Stroke outline ported from the prototype, samples stored compactly | Golden outlines |
+| INK-02 | Pen input, pressure, palm rejection | In progress | P1 | Pressure, palm rule written. Not judged on any real pen device (`DEC-05`) | Owner judges on a device |
+| INK-03 | Partial erase | Done | P2 | A partial erase replaces a stroke with its pieces, one undo step | Merge tests |
 | INK-04 | PDF as an annotatable background | Open | P2 | | PDF is embedded, never linked |
 | RND-01 | Headless layout and PDF and PNG | Open | P1 | [42](42-EDITOR-AND-RENDERING.md) | Golden output per script |
 
@@ -121,26 +123,26 @@
 
 | ID | Title | St | Sev | Mechanism | Gate |
 | --- | --- | --- | --- | --- | --- |
-| SRCH-01 | Tokenisers per script | Open | P0 | [60](60-SEARCH-AND-EMBEDDINGS.md) | Per-language test sets |
-| SRCH-02 | Inverted index | Blocked | P0 | Waits on `SPK-05` | QR-2 |
+| SRCH-01 | Tokenisers per script | Done | P0 | `crates/casual-note-search`: tests in seven languages | Per-language test sets |
+| SRCH-02 | Inverted index | In progress | P0 | BM25 index behind Ctrl K, incremental. `SPK-05` scale not measured | QR-2 |
 | EMB-01 | Vector index and rebuild | Blocked | P1 | Waits on `SPK-06` | Rebuild gives same results |
 | EMB-02 | Search by meaning, related notes | Open | P1 | | Beats baseline on a labelled set |
-| GRF-01 | Derived graph | Open | P1 | [61](61-KNOWLEDGE-GRAPH.md) | Golden graphs |
-| GRF-02 | Graph view and local graph | Open | P1 | | Interaction tests |
-| BLK-01 | Embedded pages | Open | P2 | | Cycles refused |
+| GRF-01 | Derived graph | Done | P1 | `crates/casual-note-graph`. Similar pages use word overlap, not embeddings | Golden graphs |
+| GRF-02 | Graph view and local graph | Done | P1 | `features/knowledge.js`: graph view, Related, local graph | Interaction tests |
+| BLK-01 | Embedded pages | Done | P2 | `features/links.js`: live read-only embeds, with self and cycle refusal | Cycles refused |
 
 ## Phase 5 — Assistant and agents
 
 | ID | Title | St | Sev | Mechanism | Gate |
 | --- | --- | --- | --- | --- | --- |
-| TOOL-01 | `-tools` closed tool set | Open | P0 | [63](63-AGENT-TOOLS-AND-MCP.md) | Every tool has a schema and a refusal test |
-| TOOL-02 | Approval flow, one undo step per write | Open | P0 | | Declined write changes nothing |
-| AST-01 | Assistant panel | Open | P1 | [62](62-AI-ASSISTANT-AND-PROVIDERS.md) | Interaction tests |
-| AST-02 | Provider seam, tool-calling adapters | Open | P0 | | Contract tests with a fake provider |
-| AST-03 | Web providers and key handling | Open | P0 | Keys are per browser, never synced | Key absent from export, logs, sync, by test |
+| TOOL-01 | `-tools` closed tool set | Done | P0 | `crates/casual-note-tools`: nine tools with schemas and refusals | Every tool has a schema and a refusal test |
+| TOOL-02 | Approval flow, one undo step per write | Done | P0 | Approval card from real arguments; declined writes change nothing; one undo step | Declined write changes nothing |
+| AST-01 | Assistant panel | Done | P1 | `features/assistant.js`, streaming, Stop, 8-round limit | Interaction tests |
+| AST-02 | Provider seam, tool-calling adapters | Done | P0 | Anthropic and OpenAI-compatible adapters, tested with a fake provider. **Not tested against any real provider** | Contract tests with a fake provider |
+| AST-03 | Web providers and key handling | In progress | P0 | Keys in memory by default, explicit remember option. Stored-script test (`FND-67`) remains | Key absent from export, logs, sync, by test |
 | AST-04 | Relay through the server for providers that refuse browsers | Open | P2 | Needs Phase 8 | Optional |
-| AST-05 | Prompt-injection suite | Open | P0 | [07](07-SECURITY-THREAT-MODEL.md) | No unapproved write in any fixture |
-| MCP-01 | `casual-note-mcp` | Open | P1 | Pattern from `casual-calc-mcp` | Client conformance, `--root` escapes refused |
+| AST-05 | Prompt-injection suite | In progress | P0 | An injection fixture causes no unapproved write. A full suite remains | No unapproved write in any fixture |
+| MCP-01 | `casual-note-mcp` | Done | P1 | `server/casual-note-mcp` over real stdio, root escape and read-only refused. No writer lock (`FND-69`) | Client conformance, `--root` escapes refused |
 | MCP-02 | CLI over the same tools | Open | P2 | | Same results as MCP |
 
 ## Phase 6 — First release
@@ -255,7 +257,7 @@ Rows found by the low-level design authors are added here.
 | FND-42 | Licence audit: PDF.js, PDF writer, skrifa, fonts, messageformat | Open | P1 | Not covered in 12. Phosphor's MIT licence is confirmed | Added to 12 |
 | FND-43 | Package gaps from the editor: links, image and file blocks, PDF items, direction, tilt, time | Open | P1 | Read with `FND-04` | Schema and reader updated |
 | FND-44 | Concurrent erase projection | Open | P1 | Erased ink can return when another device replaces the same stroke. 43 and 24 must agree | Merge test |
-| FND-45 | Contrast of `--faint` and small targets | Open | P0 | By calculation, `--faint` gives 2.84 to 4.03:1, and small targets fail QR-5. The prototype and web app both have this | Tokens changed, contrast check in CI |
+| FND-45 | Contrast of `--faint` and small targets | Done | P0 | `--faint` 2.60 to 4.51 light, 3.20 to 4.60 dark. A test fails if tokens drop below AA | Tokens changed, contrast check in CI |
 | FND-46 | ADRs for lazy wasm and PDF worker, reword ADR-007 | Done | P1 | ADR-028, ADR-029, ADR-007 | 08 updated |
 | FND-47 | Add `check-design` and `check-commands` gates | Open | P2 | To enforce 49 and 47 | Seeded violations fail |
 | FND-60 | Homes for the assistant loop, embedder and CLI | Open | P1 | 19 names none | Decision in 19 |

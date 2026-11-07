@@ -44,12 +44,29 @@ await send("Runtime.enable"); await send("Log.enable"); await send("Page.enable"
 await send("Page.navigate", { url: `http://127.0.0.1:${appPort}/index.html?e2e=1` });
 
 let result = null;
-for (let i = 0; i < 120 && result === null; i++) { await new Promise(r => setTimeout(r, 250)); result = await evaluate(`document.body?.getAttribute("data-e2e")`) ?? null; }
+for (let i = 0; i < 480 && result === null; i++) { await new Promise(r => setTimeout(r, 250)); result = await evaluate(`document.body?.getAttribute("data-e2e")`) ?? null; }
 const shot = process.argv.indexOf("--shot");
 if (shot > 0) {
   await new Promise(r => setTimeout(r, 300));
   const { data } = await send("Page.captureScreenshot", { format: "png" });
   writeFileSync(process.argv[shot + 1], Buffer.from(data, "base64"));
+}
+// --tour dir: after the checks, photograph the main views the tests left data in.
+const tour = process.argv.indexOf("--tour");
+if (tour > 0) {
+  const dir = process.argv[tour + 1];
+  const steps = [
+    ["page", `document.querySelector("#tree .row .open")?.click()`],
+    ["graph", `document.querySelector("#graphBtn, #knowledgeBtn, [data-t='Knowledge graph']")?.closest("button")?.click()`],
+    ["settings", `document.querySelector("#settingsBtn")?.click()`],
+    ["assistant", `document.querySelector("#assistantBtn, [data-t='Assistant']")?.closest("button")?.click()`],
+  ];
+  for (const [name, code] of steps) {
+    await evaluate(code);
+    await new Promise(r => setTimeout(r, 600));
+    const { data } = await send("Page.captureScreenshot", { format: "png" });
+    writeFileSync(join(dir, name + ".png"), Buffer.from(data, "base64"));
+  }
 }
 ws.close(); proc.kill(); server.close();
 try { rmSync(profile, { recursive: true, force: true }); } catch { /* best effort */ }

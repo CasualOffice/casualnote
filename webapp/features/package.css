@@ -1,0 +1,31 @@
+.pkgactions { display: flex; flex-wrap: wrap; gap: 8px; margin-block-start: 8px; }
+.pkgactions .btn { display: inline-flex; gap: 7px; align-items: center; padding: 5px 11px; }
+.btn:hover { background: var(--hover); }
+.btn.primary:hover { background: var(--accent); filter: brightness(1.08); }
+.btn:disabled { color: var(--faint); cursor: default; }
+.pkghidden { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; pointer-events: none; }
+.pkgmodal { outline: none; }
+.modal.pkgmodal h3 { padding-block-end: 8px; overflow-wrap: anywhere; }
+.pkgbody { flex: 1; min-height: 0; overflow: auto; padding-inline: 16px; padding-block-end: 12px; display: flex; flex-direction: column; gap: 8px; }
+.pkgbody p { margin: 0; }
+.pkgnote { color: var(--muted); font-size: .8125rem; }
+.pkgwarn { color: var(--fg); background: var(--tint); border-radius: var(--radius); padding: 8px 10px; font-size: .8125rem; }
+.pkgerror { color: var(--ink-red); }
+.pkgcode { color: var(--faint); font: 400 .75rem/1.5 var(--mono); overflow-wrap: anywhere; }
+.pkgfiles { border-block: 1px solid var(--line); max-height: 40vh; overflow: auto; display: flex; flex-direction: column; flex: none; }
+.pkgfiles:focus-visible { outline-offset: -2px; }
+.pkgfile { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; width: 100%; box-sizing: border-box; text-align: start; padding: 3px 4px; font-size: .8125rem; }
+.pkgfile small { flex: none; color: var(--faint); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.pkgfile.link { border-radius: var(--radius); }
+.pkgfile.link:hover { background: var(--hover); }
+.pkgfile.link .pkgpath { text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
+.pkgpath { min-width: 0; overflow-wrap: anywhere; }
+.modal.pkgmodal pre { margin: 0; padding: 10px 12px; background: var(--tint); border-radius: var(--radius); flex: none; max-height: 56vh; }
+.modal.pkgmodal pre:focus-visible { outline-offset: -2px; }
+.pkgback { align-self: flex-start; }
+.pkgback:hover { text-decoration: underline; }
+@media (max-width: 760px) {
+  .pkgactions .btn, .modal.pkgmodal .foot .btn { min-height: 36px; }
+  .modal.pkgmodal .foot { flex-wrap: wrap; }
+  .pkgfile.link { min-height: 32px; align-items: center; }
+}

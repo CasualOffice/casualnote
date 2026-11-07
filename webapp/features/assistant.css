@@ -1,0 +1,70 @@
+/* The assistant panel, and its section in Settings. Tokens only. See docs/49. */
+#rpChat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#right .rtabs { display: flex; flex: none; }
+#right .rtabs button { min-height: 32px; }
+#right .rtabs button:hover { color: var(--fg); }
+#right .rtabs .asst-close { flex: none; width: 32px; display: none; place-items: center; border-inline-end: 0; }
+@media (max-width: 1120px) { #right .rtabs .asst-close { display: grid; } }
+
+#msgs { overflow-anchor: none; overscroll-behavior: contain; outline-offset: -2px; }
+.asst-empty { margin: 0; color: var(--muted); }
+.asst-setup { align-self: flex-start; margin-top: -6px; }
+.asst-note { color: var(--muted); }
+.asst-wait { color: var(--faint); }
+.m.a a.ref { overflow-wrap: anywhere; }
+
+/* Buttons here have the full set of states from docs/49. */
+#rpChat .btn, .asst-fields .btn { flex: none; }
+#rpChat .btn:hover, .asst-fields .btn:hover { background: var(--hover); }
+#rpChat .btn.primary:hover { background: color-mix(in srgb, var(--accent) 86%, var(--fg)); border-color: transparent; }
+#rpChat .btn:disabled { background: var(--tint); border-color: var(--line); color: var(--faint); cursor: default; }
+#rpChat .btn:disabled:active { transform: none; }
+
+/* The approval card states exactly what will change. */
+.appr { flex: none; outline-offset: 2px; }
+.appr.settled { border-color: var(--line); }
+.appr .asst-q { color: var(--muted); font-size: .75rem; }
+.appr > b { font-weight: 600; }
+.asst-fact { display: grid; grid-template-columns: minmax(56px, auto) minmax(0, 1fr); gap: 8px; }
+.asst-fact-k { color: var(--muted); }
+.asst-fact bdi { overflow-wrap: anywhere; font-weight: 500; }
+.asst-blocks { max-height: 168px; overflow: auto; background: var(--tint); border-radius: var(--radius); padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; overscroll-behavior: contain; }
+.asst-blocks.full { max-height: 320px; }
+.asst-block { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8125rem; line-height: 1.45; }
+.asst-block.h { font-weight: 600; }
+.asst-block .mk { color: var(--muted); margin-inline-end: 6px; }
+.asst-total, .asst-sources { color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.asst-outcome { color: var(--muted); font-size: .8125rem; overflow-wrap: anywhere; }
+.appr .textlink { align-self: flex-start; font-size: .75rem; color: var(--fg); text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
+.appr .textlink:hover { color: var(--accent); text-decoration-color: var(--accent); }
+.appr .preview { margin: 0; }
+
+.asst-error { display: flex; flex-direction: column; gap: 6px; font-size: .8125rem; flex: none; }
+.asst-error-line { display: flex; gap: 6px; align-items: flex-start; color: var(--ink-red); }
+.asst-error-line .i { font-size: 14px; margin-top: 2px; }
+.asst-detail { color: var(--muted); overflow-wrap: anywhere; }
+.asst-code { color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.asst-error .row2 { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.asst-line { display: flow-root; line-height: 1.45; overflow-wrap: anywhere; color: var(--muted); }
+.asst-line button { font-size: inherit; text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 2px; color: var(--fg); }
+.asst-line button:hover { color: var(--accent); text-decoration-color: var(--accent); }
+.composer textarea { line-height: 1.4; max-height: 160px; overflow-y: auto; }
+.composer { align-items: flex-end; padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
+.composer .btn { padding-block: 5px; }
+
+.asst-fields { display: flex; flex-direction: column; gap: 2px; max-width: 460px; }
+.asst-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.asst-check input { margin: 0; width: 15px; height: 15px; accent-color: var(--strong); flex: none; }
+.agent .asst-warn { margin: 4px 0 0; color: var(--muted); font-size: .8125rem; }
+.asst-hint { display: block; margin-top: 8px; color: var(--muted); font-size: .8125rem; }
+.asst-hint:empty { display: none; }
+.asst-fields .row2 { margin-top: 10px; }
+.agent .asst-status { margin: 8px 0 4px; color: var(--fg); font-size: .8125rem; overflow-wrap: anywhere; }
+.agent .asst-status.bad { color: var(--ink-red); }
+
+@media (max-width: 760px) {
+  .composer textarea { font-size: 1rem; }
+  #right { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { #rpChat .btn:active { transform: none; } }

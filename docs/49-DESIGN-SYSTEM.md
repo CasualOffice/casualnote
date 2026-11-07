@@ -49,10 +49,10 @@ These match the prototype's `:root`, and are the only colours in `webapp/`. Any 
 | `--active` | `#e1e1dd` | `#33353a` | Current row, pressed view tab |
 | `--fg` | `#17181a` | `#ececea` | Body text |
 | `--muted` | `#62656b` | `#a3a5aa` | Secondary text, icons |
-| `--faint` | `#8e9197` | `#76787e` | Placeholders, section labels. See Accessibility |
+| `--faint` | `#67696f` | `#919399` | Placeholders, section labels. See Accessibility |
 | `--line` | `#dededa` | `#2f3034` | All hairlines |
 | `--strong` | `#17181a` | `#ececea` | Pressed tool and mode, format bar, toast, approval border |
-| `--accent` | `#1f47d6` | `#8ba4ff` | `DEC-11`. See below |
+| `--accent` | `#1f47d6` | `#6c9bff` | `DEC-11`. See below |
 | `--accent-fg` | `#ffffff` | `#10131d` | Text on accent |
 | `--accent-soft` | `#e4e9fb` | `#252c47` | Drop target lane |
 | `--tint` | `#f0f0ed` | `#222327` | Callout, code, user message |
@@ -274,7 +274,7 @@ QR-5 requires WCAG 2.2 AA. **The prototype's tokens do not all meet it, and this
 | `--fg` on `--bg` | 17.16 | 15.02 | Pass |
 | `--muted` on `--bg` | 5.64 | 7.21 | Pass |
 | `--muted` on `--side` | 5.26 | 6.76 | Pass |
-| `--accent` on `--bg` | 6.92 | 7.49 | Pass |
+| `--accent` on `--bg` | 6.92 | 6.57 | Pass |
 | `--accent-fg` on `--accent` | 7.17 | 7.81 | Pass |
 | `--ink-red` on `--bg` | 5.08 | 7.29 | Pass |
 | **`--faint` on `--bg`** | **3.05** | **4.03** | **Fail** |

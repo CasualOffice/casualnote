@@ -1,0 +1,20 @@
+[package]
+name = "casual-note-graph"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+casual-note-model = { path = "../casual-note-model" }
+casual-note-merge = { path = "../casual-note-merge" }
+casual-note-search = { path = "../casual-note-search" }
+serde = { version = "1", features = ["derive"] }
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+casual-note-ops = { path = "../casual-note-ops" }
+serde_json = "1"
+
+[lints]
+workspace = true

@@ -1,0 +1,75 @@
+/* The graph view's own parts. The drawing itself is styled in style.css: .gv, #gsvg, .n, .gctl, .zoom. */
+.kg { flex: 1; min-width: 0; display: flex; position: relative; }
+.kg .gv { min-height: 0; }
+.kgside { width: 280px; flex: none; box-sizing: border-box; display: none; flex-direction: column; gap: 18px; padding: 14px 12px; overflow: auto; border-block-start: 1px solid var(--line); border-inline-start: 1px solid var(--line); background: var(--bg); }
+.kgside.open { display: flex; }
+.kgside .nodehead { position: relative; padding-inline-end: 32px; }
+.kgside .nodehead h3 { margin-block-start: 2px; }
+.kgclose { position: absolute; inset-block-start: -4px; inset-inline-end: -4px; }
+.kgopen { align-self: flex-start; }
+.kgside .rp h4 { margin: 0 0 4px; font-size: .75rem; font-weight: 400; color: var(--faint); }
+.kgside .rp p { margin: 0; color: var(--faint); font-size: .8125rem; }
+.kgside .rel > button:first-child { padding-block: 2px; border-radius: var(--radius); }
+.kgside .rel > button:first-child:hover { background: var(--hover); color: var(--fg); }
+.kgcomputed { border-block-start: 1px dashed var(--line); padding-block-start: 12px; }
+
+.gv .btn:hover, .kgempty .btn:hover { background: var(--hover); }
+.gctl input[type=search]:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.gctl label { padding-block: 1px; cursor: pointer; border-radius: var(--radius); }
+.gctl label:hover { color: var(--fg); }
+.gctl .gsimilar > span:first-of-type { text-decoration: underline dashed var(--accent); text-underline-offset: 3px; }
+.gctl .kgmiss { color: var(--ink-red); margin: 0 0 4px; }
+.gctlbody { display: flex; flex-direction: column; gap: 3px; }
+.gtoggle { display: none; text-align: start; color: var(--muted); padding: 2px 4px; }
+.gtoggle:hover { background: var(--hover); color: var(--fg); }
+.kgaslist { margin-block-start: 4px; }
+.kgaslist:hover { text-decoration: underline; }
+.kgshowing { color: var(--muted) !important; }
+
+.n:focus { outline: none; }
+.n:focus-visible .sh { stroke: var(--accent); stroke-width: 3px; }
+.n:hover .sh { stroke: var(--accent); stroke-width: 2px; }
+.n:hover text, .n:focus-visible text { opacity: 1; }
+.n.found text { opacity: 1; font-weight: 600; }
+.n.found .sh { stroke: var(--strong); stroke-width: 2px; }
+.zoom button:focus-visible { outline-offset: -2px; }
+.kgfit { border-inline-start: 1px solid var(--line) !important; }
+
+.kgempty { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; text-align: center; padding: 16px; pointer-events: none; }
+.kgempty p { margin: 0; max-width: 42ch; color: var(--muted); }
+.kgempty .btn { pointer-events: auto; }
+.kg > .kgempty { position: relative; flex: 1; }
+.kgstatus { position: absolute; inset-block-end: 12px; inset-inline-start: 12px; font-size: .75rem; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 8px; z-index: 2; }
+
+.gv.listed { overflow: auto; touch-action: auto; }
+.kglist { display: flex; flex-direction: column; padding-block: 12px; padding-inline: 208px 16px; }
+.kgrow { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; text-align: start; padding: 4px 8px; }
+.kgrow:hover { background: var(--hover); }
+.kgrow.on { background: var(--active); }
+.kgrowt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kgrow small { flex: none; color: var(--faint); font-size: .75rem; font-variant-numeric: tabular-nums; }
+
+/* The local graph in the side panel. */
+.localg text { font: 400 10px var(--ui); fill: var(--muted); pointer-events: none; }
+.localg circle.k-other { fill: var(--bg); stroke: var(--faint); stroke-width: 1.5; }
+.localg circle:focus { outline: none; }
+.localg circle:focus-visible { stroke: var(--accent); stroke-width: 2; }
+#rpRelated .rel .lk:hover { text-decoration: underline; }
+#rpRelated .rel > button:first-child { min-height: 20px; }
+.rpbody { display: flex; flex-direction: column; gap: 2px; }
+
+/* The search palette: the app's .modal, with long titles and excerpts held in. */
+.palb { min-width: 0; flex: 1; display: block; }
+.palt { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palb small { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+  .kg { display: block; position: relative; flex: 1; }
+  .kg .gv { height: 100%; }
+  .gctl { inset-inline-start: 8px; inset-block-start: 8px; width: min(190px, calc(100% - 16px)); }
+  .gtoggle { display: block; }
+  .kgside { position: absolute; inset-inline: 0; inset-block-end: 0; width: auto; max-height: 55%; z-index: 3; border-inline-start: 0; box-shadow: var(--shadow); }
+  .zoom { inset-block-start: 8px; inset-block-end: auto; }
+  .kglist { padding-inline: 8px; padding-block-start: 180px; }
+  .kgside .rel > button:first-child, .gctl label { min-height: 28px; display: flex; align-items: center; }
+}
