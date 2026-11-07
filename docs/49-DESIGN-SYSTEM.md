@@ -331,3 +331,7 @@ ADR-026 (Phosphor, no emoji icons), ADR-023 (no copied design), ADR-025 (no fram
 ## Tracker ids
 
 `DEC-11`, `WEB-02`, `A11Y-01`, `I18N-01`, `I18N-02`, `I18N-04`, `PROTO-01`, `DEC-08`. Risk: a new row is proposed for the `--faint` contrast and target-size conflict.
+
+## The marketing site
+
+These rules govern the product. The site in `site/` may animate and illustrate, on the owner's instruction 15, provided each animation shows something the product does, and reduced motion is honoured.

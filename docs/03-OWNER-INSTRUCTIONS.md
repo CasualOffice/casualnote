@@ -18,3 +18,4 @@
 | 12 | 2026-11-07 | Proceed ahead, it is just a few things so far. Free up space. Also focus on UI and UX | Active | `webapp/` |
 | 13 | 2026-11-08 | Push it. Create the repo, create a marketing site, add CI and push | Active | `site/`, `.github/workflows/`, `DEC-12` |
 | 14 | 2026-11-08 | Hand the work over complete; the owner creates the repository and pushes themselves. Replaces the repository part of 13 | Active | `DEC-12` |
+| 15 | 2026-11-08 | The marketing site must be premium and engaging, with animation and illustrations, and not AI slop. Show it before deploying | Active | `site/`, `WEB-07`. docs/49 "no decoration" stays for the app; the site is the exception |

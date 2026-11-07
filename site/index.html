@@ -3,125 +3,197 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
 <title>CasualNote</title>
-<meta name="description" content="A local-first workspace for documents, databases, canvas and pen, in every language. Apache-2.0 all the way through.">
+<meta name="description" content="Documents, databases, canvas and pen, in any language, on your machine. Apache-2.0 all the way through.">
 <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="preload" href="assets/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
+<script type="module" src="site.js"></script>
 </head>
 <body>
-<header class="top wrap">
-  <a class="brand" href="#"><img src="assets/logo.svg" width="24" height="24" alt="">CasualNote</a>
-  <nav aria-label="Main">
-    <a href="#page">Product</a>
-    <a href="#ai">AI</a>
-    <a href="#status">Status</a>
-    <a href="https://github.com/CasualOffice/casualnote">GitHub</a>
-  </nav>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="#top"><img src="assets/logo.svg" width="26" height="26" alt="">CasualNote</a>
+    <nav aria-label="Main">
+      <a href="#page">Product</a>
+      <a href="#ai">AI</a>
+      <a href="#status">Status</a>
+      <a href="https://github.com/CasualOffice/casualnote">GitHub</a>
+    </nav>
+  </div>
 </header>
 
-<main>
-  <section class="hero wrap">
-    <h1>Notes in any language, on your machine, under a licence that stays open.</h1>
-    <div class="lede">
-      <p>Documents, databases, canvas and pen, with a knowledge graph and an optional assistant you control.</p>
+<main id="top">
+  <section class="hero" id="hero">
+    <canvas class="hero-ink" id="heroInk" aria-hidden="true"></canvas>
+    <div class="hero-copy">
+      <svg class="ink doodle" viewBox="0 0 380 300" aria-hidden="true">
+        <path pathLength="1" class="fg" d="M66 26C130 22 196 22 256 24l52 50c2 62 3 134 1 202-82 5-164 5-243 1-3-82-3-168 0-251z"/>
+        <path pathLength="1" class="fg" d="M256 24c-2 18-2 36 0 50 18 2 35 1 52 0"/>
+        <path pathLength="1" class="fg" d="M96 62c30-3 74-4 118-3"/>
+        <path pathLength="1" d="M96 108c5-3 9-4 15-1l-3 18c-5 2-10 2-15 0z"/>
+        <path pathLength="1" class="tick" d="M99 115l6 7 13-17"/>
+        <path pathLength="1" class="fg" d="M132 116c26-3 52-6 78 0 20 3 40 1 62-3"/>
+        <path pathLength="1" class="fg" d="M96 160c44-5 80 5 120 1 18-2 38-4 56-1"/>
+        <path pathLength="1" d="M96 204c20-14 26 12 42 2s22-12 36 0 22 8 40-3"/>
+        <g class="doodle-pen"><path pathLength="1" class="fg" d="M218 206l92-92c8-7 26 10 19 19l-92 92-26 7z"/><path pathLength="1" class="fg" d="M298 126l19 19"/></g>
+      </svg>
+      <h1>Write in any language.<br>Keep <span class="marked">every word.<svg class="ink under" viewBox="0 0 400 24" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M4 15C60 7 118 6 182 9c70 3 140 1 214-3"/><path pathLength="1" class="late" d="M92 21c62-6 130-7 212-5"/></svg></span></h1>
+      <p class="lede">Documents, databases, canvas and pen, on your machine, under a licence that stays open.</p>
       <div class="cta">
         <a class="btn primary" href="app/?demo=1">Try it in your browser</a>
         <a class="btn" href="https://github.com/CasualOffice/casualnote">Read the source</a>
       </div>
-      <p class="note">Early and unreleased. Your notes stay in your browser, so keep an export of anything you care about.</p>
+      <p class="pen-hint" id="penHint"><svg class="ink hint-arrow" viewBox="0 0 60 44" aria-hidden="true"><path pathLength="1" d="M56 6C38 4 20 12 10 34"/><path pathLength="1" class="late" d="M4 22l6 13 12-7"/></svg><span id="penHintText">This page takes ink. Draw on it.</span> <button type="button" class="clear" id="penClear" hidden>Clear</button></p>
+    </div>
+    <figure class="stage" id="heroStage">
+      <picture>
+        <source srcset="assets/app-page-dark.png" media="(prefers-color-scheme: dark)">
+        <img src="assets/app-page.png" width="2880" height="1800" fetchpriority="high" alt="The CasualNote app, showing a launch plan page with a task board in the text, an outline and a map of connected pages.">
+      </picture>
+    </figure>
+  </section>
+
+  <section class="morph" id="page" aria-labelledby="morphTitle">
+    <div class="morph-pin">
+      <div class="morph-head">
+        <h2 id="morphTitle">One page. Write it, then lay it out.</h2>
+        <div class="switch" role="group" aria-label="Page view">
+          <span class="switch-thumb" id="switchThumb"></span>
+          <button type="button" id="toPage" aria-pressed="true">Page</button>
+          <button type="button" id="toCanvas" aria-pressed="false">Canvas</button>
+        </div>
+      </div>
+      <div class="sheet" id="sheet">
+        <div class="dots" id="dots"></div>
+        <div class="sheet-world" id="world">
+          <h3 class="m-item m-title" data-k="title">Why would someone switch?</h3>
+          <p class="m-item" data-k="p1">Two reasons came up every time we asked people who had tried to leave their old notes app.</p>
+          <p class="m-item m-check" data-k="t1"><span class="box"></span>Import has to work the first time</p>
+          <p class="m-item m-check" data-k="t2"><span class="box"></span>It must feel fast on an old laptop</p>
+          <p class="m-item m-check" data-k="t3"><span class="box on"></span>Share one page with a single link</p>
+          <p class="m-item m-sticky" data-k="s1" data-late>Show the import report before anything changes</p>
+          <p class="m-item m-sticky alt" data-k="s2" data-late lang="zh-Hans">离线也能用</p>
+          <p class="m-item m-shape" data-k="r1" data-late>Old notes app</p>
+          <p class="m-item m-shape round" data-k="r2" data-late>Your notes, intact</p>
+          <svg class="world-ink" id="worldInk" aria-hidden="true"><path id="wArrow" pathLength="1"/><path id="wHead" pathLength="1"/><path id="wCircle" pathLength="1"/></svg>
+        </div>
+      </div>
+      <p class="morph-foot">The same note in both views. Ink, shapes and sticky notes stay with the page.</p>
     </div>
   </section>
 
-  <figure class="stage wrap-wide">
-    <picture>
-      <source srcset="assets/app-page-dark.png" media="(prefers-color-scheme: dark)">
-      <img src="assets/app-page.png" width="2880" height="1800" alt="CasualNote showing a launch plan page with a task board embedded in the text, an outline and a map of connected pages.">
-    </picture>
-  </figure>
+  <section class="tongue" id="tongue" aria-labelledby="tongueTitle">
+    <div class="tongue-in">
+      <h2 id="tongueTitle">Your language is not a translation.</h2>
+      <p class="sub">Input methods, right-to-left layout and search are requirements in every script. Your words stay exactly as you wrote them.</p>
+      <div class="typer" id="typer" aria-live="off">
+        <p class="typed" id="typed" lang="zh-Hans">离线也能用，笔记归你所有。</p>
+        <div class="cands" id="cands" hidden></div>
+      </div>
+      <div class="tabs" role="group" aria-label="Choose a language" id="tongueTabs"></div>
+      <p class="fine">Interface translations are drafts until native speakers review them.</p>
+    </div>
+  </section>
 
-  <section id="page" class="split wrap">
-    <div class="copy">
-      <h2>One page. Write it, then lay it out.</h2>
-      <p>A switch turns any page into a canvas. Your text moves onto it as a card you can still edit, next to sticky notes, shapes, arrows and pen strokes.</p>
-      <ul>
-        <li>Slash menu, Markdown shortcuts, links between pages, backlinks</li>
-        <li>Pressure-aware ink, with partial erase</li>
-        <li>Databases with table and board views, inside any page</li>
+  <section class="graph" id="knowledge" aria-labelledby="graphTitle">
+    <canvas id="graphCanvas" role="img" aria-label="A knowledge graph of pages, tags, tasks and people, with lines between them. You can drag the points."></canvas>
+    <div class="graph-copy">
+      <h2 id="graphTitle">See how your notes connect.</h2>
+      <p>Worked out from your pages, tags, tasks and people, so it always agrees with them. Hover a point to follow it, or pull it around.</p>
+      <ul class="legend">
+        <li><svg viewBox="0 0 34 4" aria-hidden="true"><path d="M1 2h32"/></svg>Links you made</li>
+        <li><svg class="dash" viewBox="0 0 34 4" aria-hidden="true"><path d="M1 2h32"/></svg>Suggested, and always marked as a guess</li>
       </ul>
     </div>
-    <img class="shot" src="assets/app-canvas.png" width="2880" height="1800" loading="lazy" alt="The same page shown as a canvas, with its text in a card beside sticky notes, shapes, an arrow and a pen circle.">
   </section>
 
-  <section class="tongues" aria-labelledby="tongues">
-    <div class="wrap">
-      <h2 id="tongues">Multilingual from the first commit.</h2>
-      <p class="sub">Input methods, right-to-left layout and search are requirements in every language, not translations added later.</p>
-    </div>
-    <ul class="lines wrap" lang="mul">
-      <li lang="zh-Hans">离线也能用，笔记归你所有。</li>
-      <li lang="ar" dir="rtl">ملاحظاتك تبقى لك، حتى دون اتصال.</li>
-      <li lang="hi">आपके नोट्स आपके ही रहते हैं।</li>
-      <li lang="ja">ノートはあなたのもの。</li>
-      <li lang="es">Tus notas siguen siendo tuyas.</li>
-    </ul>
-    <p class="wrap fine">Translations of the interface are drafts until reviewed by native speakers.</p>
-  </section>
-
-  <section id="knowledge" class="flip wrap">
-    <img class="shot" src="assets/app-graph.png" width="2880" height="1800" loading="lazy" alt="A knowledge graph of pages, tags, database rows and people.">
-    <div class="copy">
-      <h2>See how your notes connect.</h2>
-      <p>The graph is worked out from your pages, tags, tasks and people. It holds nothing of its own, so it always agrees with your notes. Connections you made and connections that were guessed look different.</p>
-    </div>
-  </section>
-
-  <section id="ai" class="ai wrap">
-    <h2>AI you can turn off, and that asks first.</h2>
-    <div class="two">
-      <div>
-        <h3>On the web</h3>
-        <p>Connect your own provider with your own key: Anthropic, or anything OpenAI-compatible. Nothing is sent until you set it up, and the panel names where your notes are going.</p>
+  <section class="ai" id="ai" aria-labelledby="aiTitle">
+    <div class="ai-copy reveal">
+      <h2 id="aiTitle">AI that asks first.</h2>
+      <p>It cannot change a note until you approve. Each change shows what it will do and what it read, and undoes in one step.</p>
+      <div class="seg" role="group" aria-label="Where the assistant runs">
+        <button type="button" id="modeWeb" aria-pressed="true">Your own provider</button>
+        <button type="button" id="modeLocal" aria-pressed="false">On this computer</button>
       </div>
-      <div>
-        <h3>On desktop</h3>
-        <p>Download a model and run it on your computer, so your notes stay there. Early macOS build; no real model has been run through it yet.</p>
+      <p class="seg-note" id="modeNote">Connect Anthropic or anything OpenAI-compatible with your own key. Nothing is sent until you do.</p>
+      <p class="seg-note">Other tools can connect through MCP and use the same set of tools.</p>
+    </div>
+    <div class="ai-demo reveal" id="aiDemo">
+      <div class="ai-note" id="aiNote">
+        <h3>Launch checklist</h3>
+        <p class="ai-line">Write the release notes</p>
+        <p class="ai-line">Record the import walkthrough</p>
+        <p class="ai-line">Translate the docs</p>
+      </div>
+      <div class="ai-chat">
+        <p class="ask" id="aiAsk">Turn these into tasks</p>
+        <div class="card" id="aiCard">
+          <p class="card-t" id="aiCardT">Change 3 blocks into tasks</p>
+          <p class="card-m">Read: Launch checklist<br><span id="aiDest">Sent to: your provider</span></p>
+          <div class="card-b" id="aiBtns"></div>
+        </div>
       </div>
     </div>
-    <p class="strong">The assistant cannot change a note without your approval. Every change it proposes shows what it will do and what it read, and undoes in one step. Other tools can connect through MCP, using the same set of tools.</p>
   </section>
 
-  <section class="keep wrap">
-    <div class="copy">
-      <h2>Leave whenever you like.</h2>
-      <p>Export is one documented file with plain Markdown inside. A small script with no dependencies on us can check and unpack it.</p>
+  <section class="keep" aria-labelledby="keepTitle">
+    <div class="keep-copy reveal">
+      <h2 id="keepTitle">Leave whenever you like.</h2>
+      <p>Export is one documented file with plain Markdown inside. A small script that needs nothing from us can check and unpack it.</p>
     </div>
-<pre><code>$ python3 tools/cnotepack.py extract notes.cnotepack ./out
-$ ls out/readable
-Beta launch plan.md   读书笔记.md   ...</code></pre>
-  </section>
-
-  <section id="status" class="status wrap">
-    <h2>Where it stands</h2>
-    <p class="sub">We would rather you know now.</p>
-    <dl>
-      <div><dt>Works in the browser</dt><dd>Writing, links, databases, canvas and pen, search, knowledge graph, export and import, six interface languages</dd></div>
-      <div><dt>Works, with limits</dt><dd>The assistant and MCP server have only been tested against a stand-in provider. Pen has not been judged on real devices. Storage and encrypted sync are new, and the encryption has had no outside review. Large workspaces are too slow today: typing on a 5,000-block page and search across 100,000 pages both miss their targets, and a simulated five-year history crashed the merge library</dd></div>
-      <div><dt>Being built</dt><dd>Desktop app with local models, for macOS first; meaning search as an optional download</dd></div>
-      <div><dt>Later</dt><dd>Self-hosted server for teams, mobile apps</dd></div>
-    </dl>
-  </section>
-
-  <section class="licence">
-    <div class="wrap">
-      <h2>Apache-2.0. All of it.</h2>
-      <p>The engine, the apps and the server to come. No enterprise edition, no licence key and no paid folder in this repository.</p>
-      <a class="btn primary" href="app/?demo=1">Try it in your browser</a>
+    <div class="unpack" id="unpack">
+      <div class="pack"><img src="assets/logo.svg" width="96" height="96" alt=""><span>notes.cnotepack</span></div>
+      <svg class="ink strands" viewBox="0 0 200 300" preserveAspectRatio="none" aria-hidden="true">
+        <path pathLength="1" d="M0 150C70 150 80 18 200 18"/><path pathLength="1" d="M0 150C70 150 90 74 200 74"/><path pathLength="1" d="M0 150C80 150 110 130 200 130"/><path pathLength="1" d="M0 150C80 150 110 172 200 186"/><path pathLength="1" d="M0 150C70 150 90 228 200 240"/><path pathLength="1" d="M0 150C70 150 80 286 200 292"/>
+      </svg>
+      <ul class="files">
+        <li>manifest.json<small>every file, with its hash</small></li>
+        <li>pages/<small>your blocks</small></li>
+        <li>databases/<small>tables and boards</small></li>
+        <li>ink/<small>every pen stroke</small></li>
+        <li>readable/Beta launch plan.md<small>plain Markdown</small></li>
+        <li lang="zh-Hans">readable/读书笔记.md<small lang="en">your filenames, in your script</small></li>
+      </ul>
     </div>
+  </section>
+
+  <section class="status" id="status" aria-labelledby="statusTitle">
+    <h2 id="statusTitle" class="reveal">Where it stands today.</h2>
+    <div class="bento">
+      <div class="tile t-works reveal">
+        <h3>Works in your browser</h3>
+        <p>Writing, links, databases, canvas and pen, search, knowledge graph, export and import, six interface languages.</p>
+      </div>
+      <div class="tile t-slow reveal">
+        <h3>Not fast enough yet at huge sizes</h3>
+        <dl>
+          <div><dt>174 ms</dt><dd>typing on a 5,000-block page, against a 16 ms target. At 300 blocks: 11.7 ms</dd></div>
+          <div><dt>223 ms</dt><dd>search across 100,000 pages, against 50 ms</dd></div>
+        </dl>
+        <p>A simulated five-year history also crashed the merge library. Fixing that comes first.</p>
+      </div>
+      <div class="tile t-new reveal">
+        <h3>New, and lightly tested</h3>
+        <p>Durable storage and encrypted folder sync, whose encryption has had no outside review. Search by meaning. The assistant, so far tried only against a stand-in provider.</p>
+      </div>
+      <div class="tile t-next reveal">
+        <h3>Being built</h3>
+        <p>The desktop app with local models. An early macOS build runs, and no real model has been through it yet. Then mobile, and a self-hosted server.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="end" id="end" aria-labelledby="endTitle">
+    <h2 id="endTitle">Apache-2.0.<br><span class="marked">All of it.<svg class="ink under" viewBox="0 0 400 24" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M4 13c84-8 182-9 392-4"/></svg></span></h2>
+    <p>The engine, the apps and the server to come. No enterprise edition and no licence key.</p>
+    <a class="btn primary big" href="app/?demo=1">Try it in your browser</a>
+    <p class="fine">Early and unreleased. Your notes stay in your browser, so keep an export of anything you care about.</p>
   </section>
 </main>
 
-<footer class="wrap foot">
+<footer class="foot">
   <span>CasualNote, part of <a href="https://github.com/CasualOffice">CasualOffice</a></span>
   <span><a href="https://github.com/CasualOffice/casualnote/blob/main/LICENSE">Apache-2.0</a></span>
 </footer>
