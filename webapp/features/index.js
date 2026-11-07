@@ -14,6 +14,7 @@ const FEATURES = ["links", "database", "canvas", "knowledge", "package", "assist
 
 export async function loadFeatures(api) {
   for (const name of FEATURES) {
+    document.head.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href: `features/${name}.css` }));
     try {
       (await import(`./${name}.js`)).install(api);
     } catch (err) {

@@ -59,8 +59,7 @@ export async function runE2E({ api, engine, store, state, undoStack, replay, red
     return engine.page(state.cur) === other.page(state.cur) && texts()[0].startsWith("FROM OTHER ") && texts()[0].endsWith(" local");
   });
   for (const name of ["links", "database", "canvas", "knowledge", "package", "assistant"]) {
-    let mod = null;
-    try { mod = await import(`./${name}.test.js`); } catch { continue; }
+    const mod = await import(`./${name}.test.js`);
     await mod.run({ api, ok, wait, key, type, texts, first, pageNow, engine, state, store, setCaret, textOf, openPage, $, $$ });
   }
   document.body.setAttribute("data-e2e", out.join("\n"));
