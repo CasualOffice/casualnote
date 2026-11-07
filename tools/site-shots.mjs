@@ -24,19 +24,27 @@ ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id) { waiting.get(m.id
 const send = (method, params = {}) => new Promise(r => { const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const evaluate = async expr => (await send("Runtime.evaluate", { expression: expr, returnByValue: true })).result?.value;
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const shot = async name => { await wait(700); const { data } = await send("Page.captureScreenshot", { format: "png" }); writeFileSync(join(out, name + ".png"), Buffer.from(data, "base64")); };
+const shot = async name => { await wait(900); const { data } = await send("Page.captureScreenshot", { format: "webp", quality: 86 }); writeFileSync(join(out, name + ".webp"), Buffer.from(data, "base64")); };
 const open = title => evaluate(`(() => { document.querySelectorAll("#tree .chev[aria-label='Expand']").forEach(c => c.click()); [...document.querySelectorAll("#tree .row .open")].find(b => b.textContent.includes(${JSON.stringify(title)}))?.click(); })()`);
 await send("Page.enable"); await send("Runtime.enable");
-await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 2, mobile: false });
+await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1.5, mobile: false });
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
 await send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/index.html?demo=1` });
 for (let i = 0; i < 80; i++) { await wait(250); if (await evaluate(`[...document.querySelectorAll("#tree .row")].some(r => r.textContent.includes("Beta launch plan"))`)) break; }
 await wait(800);
-await open("Beta launch plan"); await shot("app-page");
-await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] }); await shot("app-page-dark");
-await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
-await open("Why would someone switch?"); await shot("app-canvas");
-await evaluate(`document.querySelector("#graphBtn")?.click()`); await wait(1500); await shot("app-graph");
+const panel = () => evaluate(`document.querySelector("#rightBtn")?.click()`);
+for (const mode of ["light", "dark"]) {
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: mode }] });
+  await open("Beta launch plan"); await shot(`app-page-${mode}`);
+  await open("Why would someone switch?"); await panel(); await wait(400); await shot(`app-canvas-${mode}`); await panel();
+  await evaluate(`document.querySelector("#graphBtn")?.click()`); await wait(1600); await shot(`app-graph-${mode}`);
+}
+await evaluate(`localStorage.setItem("casualnote-lang", "ar")`);
+await send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/index.html?demo=1` }); await wait(3000);
+for (const mode of ["light", "dark"]) {
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: mode }] });
+  await open("Beta launch plan"); await shot(`app-arabic-${mode}`);
+}
 ws.close(); proc.kill(); server.close();
 try { rmSync(profile, { recursive: true, force: true }); } catch { /* best effort */ }
 console.log("done");

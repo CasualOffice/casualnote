@@ -5,18 +5,8 @@ const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 if (still) root.classList.add("still");
 const $ = id => document.getElementById(id);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
-const ease = t => 1 - Math.pow(1 - t, 3);
 const inkColor = () => getComputedStyle(root).getPropertyValue("--ink").trim();
 
-/* ---------- One frame loop, alive only while something it drives is on screen ---------- */
-const active = new Set();
-let frame = 0;
-const tick = t => { frame = 0; active.forEach(f => f(t)); if (active.size) frame = requestAnimationFrame(tick); };
-function whileVisible(el, fn, margin = "10%") {
-  new IntersectionObserver(([e]) => {
-    if (e.isIntersecting) { active.add(fn); frame ||= requestAnimationFrame(tick); } else active.delete(fn);
-  }, { rootMargin: margin }).observe(el);
-}
 function once(selector, cls, amount = .25) {
   const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add(cls); io.unobserve(e.target); } }), { threshold: amount });
   document.querySelectorAll(selector).forEach(el => io.observe(el));
@@ -25,7 +15,6 @@ once(".reveal", "in", .12);
 once(".end .marked", "drawn", .6);
 once(".unpack", "drawn", .3);
 requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector(".hero-copy")?.classList.add("drawn")));
-setTimeout(() => $("penHint")?.classList.add("drawn"), 1300);
 
 /* ---------- Hero: real ink, thinner when the pen moves fast ---------- */
 {
@@ -73,105 +62,22 @@ setTimeout(() => $("penHint")?.classList.add("drawn"), 1300);
   new ResizeObserver(size).observe(hero);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paint);
 
-  // The product settles flat as you reach it.
-  if (!still) {
-    const pic = document.querySelector("#heroStage picture");
-    const stage = $("heroStage");
-    whileVisible(stage, () => {
-      const r = stage.getBoundingClientRect(), p = clamp(1 - (r.top - innerHeight * .08) / (innerHeight * .72));
-      const e = ease(p);
-      pic.style.transform = `rotateX(${(1 - e) * 16}deg) scale(${.93 + e * .07})`;
-    });
-  }
 }
 
-/* ---------- Page to canvas, driven by the scrollbar or the switch ---------- */
+/* ---------- The tour: one application in one place, and CSS moves everything ---------- */
 {
-  const section = $("page"), sheet = $("sheet"), world = $("world"), dots = $("dots");
-  const items = Object.fromEntries([...world.querySelectorAll(".m-item")].map(el => [el.dataset.k, el]));
-  const inkEl = $("worldInk"), arrow = $("wArrow"), head = $("wHead"), circle = $("wCircle");
-  const wide = { W: 1120, H: 640, col: { x: 300, w: 520, y: 70 },
-    canvas: {
-      title: { x: 60, y: 52, w: 400 }, p1: { x: 60, y: 138, w: 370 },
-      t1: { x: 620, y: 368, w: 400 }, t2: { x: 620, y: 410, w: 400 }, t3: { x: 620, y: 452, w: 400 },
-      s1: { x: 530, y: 56, w: 240, r: -2.5 }, s2: { x: 830, y: 92, w: 190, r: 3 },
-      r1: { x: 70, y: 420, w: 170, h: 84 }, r2: { x: 340, y: 404, w: 180, h: 116 } },
-    arrow: "M244 462C276 452 304 452 334 460", head: "M322 448l13 13-16 8", circle: "M640 346C790 318 1010 312 1040 372C1066 440 1040 510 940 524C820 540 640 536 590 482C556 432 566 360 665 340" };
-  const narrow = { W: 560, H: 860, col: { x: 40, w: 480, y: 56 },
-    canvas: {
-      title: { x: 34, y: 34, w: 360 }, p1: { x: 34, y: 116, w: 320 },
-      t1: { x: 58, y: 648, w: 450 }, t2: { x: 58, y: 692, w: 450 }, t3: { x: 58, y: 736, w: 450 },
-      s1: { x: 340, y: 262, w: 190, r: -2.5 }, s2: { x: 44, y: 276, w: 180, r: 3 },
-      r1: { x: 44, y: 440, w: 170, h: 84 }, r2: { x: 330, y: 424, w: 180, h: 116 } },
-    arrow: "M218 482C256 472 290 472 322 480", head: "M310 468l13 13-16 8", circle: "M120 622C250 604 490 600 520 668C540 730 520 790 420 806C300 820 90 816 36 760C10 700 30 640 140 618" };
-  let L = wide, heights = {}, target = 0, shown = 0, forced = null;
-
-  function measure() {
-    const w = sheet.clientWidth, h = sheet.clientHeight;
-    L = w / h < .92 ? narrow : wide;
-    const s = Math.min(w / L.W, h / L.H);
-    world.style.width = `${L.W}px`; world.style.height = `${L.H}px`;
-    world.style.transform = `translate(${(w - L.W * s) / 2}px,${(h - L.H * s) / 2}px) scale(${s})`;
-    inkEl.setAttribute("width", L.W); inkEl.setAttribute("height", L.H); inkEl.setAttribute("viewBox", `0 0 ${L.W} ${L.H}`);
-    arrow.setAttribute("d", L.arrow); head.setAttribute("d", L.head); circle.setAttribute("d", L.circle);
-    // The column is laid out in the world's own units, so it matches at every size.
-    const gaps = { title: 24, p1: 26, t1: 14, t2: 14, t3: 0 };
-    let y = L.col.y;
-    for (const k of ["title", "p1", "t1", "t2", "t3"]) {
-      items[k].style.width = `${L.col.w}px`;
-      heights[k] = { x: L.col.x, y, w: L.col.w };
-      y += items[k].offsetHeight + gaps[k];
-    }
-    for (const k of ["s1", "s2", "r1", "r2"]) {
-      const c = L.canvas[k];
-      items[k].style.width = `${c.w}px`;
-      if (c.h) items[k].style.height = `${c.h}px`;
-    }
-    shown = -1;
-  }
-  const lerp = (a, b, t) => a + (b - a) * t;
-  function draw(p) {
-    const order = ["title", "p1", "t1", "t2", "t3"];
-    order.forEach((k, i) => {
-      const c = L.canvas[k], a = heights[k], t = ease(clamp((p - i * .05) / .62));
-      // Widths stay as written while a block moves, so its text does not rewrap in flight.
-      items[k].style.transform = `translate(${lerp(a.x, c.x, t)}px,${lerp(a.y, c.y, t)}px)`;
-    });
-    ["s1", "s2", "r1", "r2"].forEach((k, i) => {
-      const c = L.canvas[k], t = ease(clamp((p - .42 - i * .07) / .26));
-      items[k].style.opacity = t;
-      items[k].style.transform = `translate(${c.x}px,${c.y + (1 - t) * 26}px) rotate(${(c.r || 0) * t}deg) scale(${.9 + t * .1})`;
-    });
-    dots.style.opacity = clamp((p - .2) / .35) * .9;
-    arrow.style.strokeDashoffset = 1 - clamp((p - .72) / .12);
-    head.style.strokeDashoffset = 1 - clamp((p - .83) / .05);
-    circle.style.strokeDashoffset = 1 - clamp((p - .78) / .2);
-    const isCanvas = p > .5;
-    $("toPage").setAttribute("aria-pressed", String(!isCanvas));
-    $("toCanvas").setAttribute("aria-pressed", String(isCanvas));
-    $("switchThumb").style.transform = `translateX(${isCanvas ? "100%" : "0"})`;
-  }
-  measure();
-  draw(0);
-  new ResizeObserver(() => { measure(); draw(target); }).observe(sheet);
-  document.fonts?.ready.then(() => { measure(); draw(shown < 0 ? target : shown); });
-
-  if (still) {
-    // No flight: the switch simply changes the view.
-    $("toPage").onclick = () => { target = 0; draw(0); };
-    $("toCanvas").onclick = () => { target = 1; draw(1); };
-  } else {
-    whileVisible(section, () => {
-      const r = section.getBoundingClientRect(), travel = section.offsetHeight - innerHeight;
-      target = forced ?? clamp((-r.top - travel * .12) / (travel * .76));
-      if (Math.abs(target - shown) < .0005) return;
-      shown = shown < 0 ? target : shown + (target - shown) * .16;
-      draw(shown);
-    }, "20%");
-    const go = v => { const travel = section.offsetHeight - innerHeight; scrollTo({ top: section.getBoundingClientRect().top + scrollY + (v ? travel * .9 : travel * .08), behavior: "smooth" }); };
-    $("toPage").onclick = () => go(0);
-    $("toCanvas").onclick = () => go(1);
-  }
+  const marks = [...document.querySelectorAll(".tour-marks .mark")];
+  const parts = [...document.querySelectorAll(".tour [data-step]")], navs = [...document.querySelectorAll(".tour-nav button")];
+  const show = n => {
+    parts.forEach(el => el.classList.toggle("on", +el.dataset.step === n));
+    navs.forEach((b, i) => b.setAttribute("aria-pressed", String(i === n)));
+  };
+  show(0);
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) show(marks.indexOf(e.target)); }), { rootMargin: "-50% 0px -50% 0px" });
+  marks.forEach(m => io.observe(m));
+  navs.forEach((b, i) => b.addEventListener("click", () => marks[i].scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" })));
+  // Decoded ahead of time, so the first change of view has nothing left to wait for.
+  document.querySelectorAll(".shot img").forEach(img => img.decode?.().catch(() => {}));
 }
 
 /* ---------- Languages: typed through the input method each script really uses ---------- */
@@ -258,113 +164,6 @@ setTimeout(() => $("penHint")?.classList.add("drawn"), 1300);
     if (visible && !was) play(false); else if (!visible) { run++; showCands(null); render(L[index].final); }
   }, { threshold: .25 }).observe(typer);
   setLang(L[0]);
-}
-
-/* ---------- The graph: a real force layout you can pull around ---------- */
-{
-  const section = $("knowledge"), canvas = $("graphCanvas"), ctx = canvas.getContext("2d");
-  const names = [
-    ["Beta launch plan", 9, "page"], ["读书笔记", 7, "page"], ["File format", 7, "page"], ["Why switch?", 7, "page"], ["Sync across devices", 6, "page"],
-    ["ملاحظات الاجتماع", 6, "page"], ["議事録", 6, "page"], ["#launch", 4.5, "tag"], ["#format", 4.5, "tag"], ["#reading", 4.5, "tag"], ["Mei", 4.5, "person"], ["Tomasz", 4.5, "person"], ["Lin", 4.5, "person"], ["Priya", 4.5, "person"],
-    ["Write the release notes", 3.5, "task"], ["Translate the docs", 3.5, "task"], ["Finish Evernote import", 3.5, "task"], ["Review the format spec", 3.5, "task"], ["Open the waitlist", 3.5, "task"],
-    ["Import report", 5, "page"], ["Offline first", 5, "page"], ["デザインメモ", 5, "page"], ["Roadmap notes", 5, "page"], ["विचार", 5, "page"],
-  ];
-  const made = [[0,3],[0,2],[0,7],[0,14],[0,15],[0,16],[0,18],[2,8],[4,8],[2,17],[1,9],[3,7],[14,10],[15,12],[16,13],[17,11],[18,10],[0,19],[19,16],[4,20],[3,20],[6,21],[5,0],[22,0],[23,1],[22,4],[6,22]];
-  const guessed = [[1,5],[20,2],[19,3],[21,23],[5,6]];
-  const edges = [...made.map(([a, b]) => ({ a, b, g: false })), ...guessed.map(([a, b]) => ({ a, b, g: true }))];
-  let w = 0, h = 0, born = 0, drag = null, hover = -1, started = false;
-  const nodes = names.map(([label, r, kind], i) => {
-    const a = i * 2.399963;
-    return { label, r, kind, x: 0, y: 0, vx: 0, vy: 0, a, d: 30 + Math.sqrt(i) * 62, n: new Set() };
-  });
-  edges.forEach(e => { nodes[e.a].n.add(e.b); nodes[e.b].n.add(e.a); });
-  const centre = () => {
-    const narrowView = w < 860;
-    return { x: narrowView ? w * .5 : w * .62, y: narrowView ? h * .66 : h * .52 };
-  };
-  function size() {
-    const d = Math.min(devicePixelRatio || 1, 2), r = canvas.getBoundingClientRect();
-    w = r.width; h = r.height; canvas.width = w * d; canvas.height = h * d;
-    ctx.setTransform(d, 0, 0, d, 0, 0);
-    const c = centre(), spread = Math.min(1.25, Math.min(w, h * 1.3) / 780);
-    if (!started) { nodes.forEach(n => { n.x = c.x + Math.cos(n.a) * n.d * spread; n.y = c.y + Math.sin(n.a) * n.d * spread * .78; }); }
-  }
-  function step() {
-    const c = centre(), rest = Math.min(120, Math.max(60, w / 12));
-    for (let i = 0; i < nodes.length; i++) {
-      const a = nodes[i];
-      a.vx += (c.x - a.x) * .0016; a.vy += (c.y - a.y) * .0024;
-      for (let j = i + 1; j < nodes.length; j++) {
-        const b = nodes[j], dx = a.x - b.x, dy = a.y - b.y, q = dx * dx + dy * dy + .01;
-        if (q > 90000) continue;
-        const f = 2600 / q;
-        a.vx += dx * f * .02; a.vy += dy * f * .02; b.vx -= dx * f * .02; b.vy -= dy * f * .02;
-      }
-    }
-    for (const e of edges) {
-      const a = nodes[e.a], b = nodes[e.b], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, f = (d - rest) * (e.g ? .0008 : .0028);
-      a.vx += dx / d * f * d * .02; a.vy += dy / d * f * d * .02; b.vx -= dx / d * f * d * .02; b.vy -= dy / d * f * d * .02;
-    }
-    for (const n of nodes) {
-      if (n === drag) { n.vx = n.vy = 0; continue; }
-      n.vx *= .86; n.vy *= .86; n.x += n.vx; n.y += n.vy;
-      n.x = clamp(n.x, 14, w - 14); n.y = clamp(n.y, 14, h - 14);
-    }
-  }
-  function draw(t) {
-    if (!born) born = t;
-    const style = getComputedStyle(root);
-    const ink = style.getPropertyValue("--ink").trim(), fg = style.getPropertyValue("--fg").trim(), muted = style.getPropertyValue("--muted").trim(), paper = style.getPropertyValue("--paper").trim();
-    ctx.clearRect(0, 0, w, h);
-    const grow = still ? 1 : clamp((t - born) / 1400), focus = hover >= 0 ? hover : drag ? nodes.indexOf(drag) : -1;
-    for (const e of edges) {
-      const a = nodes[e.a], b = nodes[e.b], lit = focus >= 0 && (e.a === focus || e.b === focus);
-      ctx.globalAlpha = (focus >= 0 && !lit ? .12 : lit ? 1 : e.g ? .7 : .34) * grow;
-      ctx.strokeStyle = lit || e.g ? ink : muted; ctx.lineWidth = lit ? 1.8 : 1.1;
-      ctx.setLineDash(e.g ? [4, 5] : []);
-      ctx.beginPath(); ctx.moveTo(a.x, a.y);
-      const end = grow; ctx.lineTo(a.x + (b.x - a.x) * end, a.y + (b.y - a.y) * end); ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    nodes.forEach((n, i) => {
-      const lit = focus < 0 || i === focus || nodes[focus].n.has(i);
-      const appear = ease(clamp(grow * 1.6 - i * .03));
-      ctx.globalAlpha = (lit ? 1 : .22) * appear;
-      ctx.beginPath(); ctx.arc(n.x, n.y, n.r * appear, 0, 7);
-      if (n.kind === "page") { ctx.fillStyle = i === focus ? ink : fg; ctx.fill(); }
-      else { ctx.fillStyle = paper; ctx.fill(); ctx.strokeStyle = n.kind === "tag" ? ink : fg; ctx.lineWidth = 1.6; ctx.stroke(); }
-      const label = n.r >= 5 || i === focus || (focus >= 0 && nodes[focus].n.has(i));
-      if (label && w >= 560 || i === focus) {
-        ctx.font = `${n.r >= 7 ? 500 : 400} ${n.r >= 7 ? 14 : 13}px Geist, -apple-system, "PingFang SC", "Noto Sans SC", system-ui, sans-serif`;
-        ctx.fillStyle = lit ? fg : muted; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-        ctx.lineWidth = 4; ctx.strokeStyle = paper; ctx.lineJoin = "round";
-        ctx.strokeText(n.label, n.x + n.r + 7, n.y); ctx.fillText(n.label, n.x + n.r + 7, n.y);
-      }
-    });
-    ctx.globalAlpha = 1;
-  }
-  const pick = e => {
-    const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    let best = -1, min = 26 * 26;
-    nodes.forEach((n, i) => { const q = (n.x - x) ** 2 + (n.y - y) ** 2; if (q < min) { min = q; best = i; } });
-    return { best, x, y };
-  };
-  canvas.addEventListener("pointerdown", e => {
-    const { best } = pick(e);
-    if (best < 0 || e.pointerType === "touch") return;
-    drag = nodes[best]; canvas.setPointerCapture(e.pointerId); canvas.classList.add("drag");
-  });
-  canvas.addEventListener("pointermove", e => {
-    const { best, x, y } = pick(e);
-    if (drag) { drag.x = x; drag.y = y; return; }
-    hover = best;
-  });
-  const release = () => { drag = null; canvas.classList.remove("drag"); };
-  canvas.addEventListener("pointerup", release); canvas.addEventListener("pointercancel", release);
-  canvas.addEventListener("pointerleave", () => { hover = -1; });
-  new ResizeObserver(() => { size(); if (still) draw(1); }).observe(section);
-  size();
-  whileVisible(section, t => { started = true; if (!still || drag) step(); draw(t); }, "0%");
 }
 
 /* ---------- The assistant asks first: the approval is real on this page ---------- */
