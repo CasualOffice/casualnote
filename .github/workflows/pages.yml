@@ -34,7 +34,7 @@ jobs:
         run: |
           mkdir -p _site/app/tests
           cp -R site/. _site/
-          cp -R webapp/app.js webapp/data.js webapp/store.js webapp/style.css webapp/index.html webapp/features _site/app/
+          cp -R webapp/app.js webapp/data.js webapp/store.js webapp/style.css webapp/index.html webapp/logo.svg webapp/features _site/app/
           cp webapp/tests/demo.js _site/app/tests/
           mkdir -p _site/app/pkg
           cp webapp/pkg/casual_note_wasm.js webapp/pkg/casual_note_wasm_bg.wasm _site/app/pkg/
