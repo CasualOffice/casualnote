@@ -1996,6 +1996,7 @@ async function start() {
   paintSaved();
   if (firstRun) $(".doc .title")?.focus();
   else focusEditor();
+  if (new URLSearchParams(location.search).has("demo")) (await import("./tests/demo.js")).seedDemo(api);
   if (new URLSearchParams(location.search).has("e2e")) {
     const { runE2E } = await import("./tests/e2e.js");
     runE2E({ api, engine, store, state, undoStack: undo, replay, redoStack: redo, pageNow: () => page, openPage, setLang, renderAll, $, $$, setCaret, textOf });

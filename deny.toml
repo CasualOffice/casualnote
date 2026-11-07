@@ -1,0 +1,22 @@
+# Supply-chain policy (docs/15, ADR-023). No GPL or AGPL. MPL only by a named exception.
+[advisories]
+yanked = "deny"
+ignore = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[licenses]
+allow = ["Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "BSL-1.0", "ISC", "MIT", "Unicode-3.0", "Unlicense", "Zlib", "CC0-1.0"]
+# Named MPL exceptions, per ADR-023. All arrive through Loro, unmodified, and MPL's copyleft applies per file.
+exceptions = [
+    { allow = ["MPL-2.0"], crate = "im" },
+    { allow = ["MPL-2.0"], crate = "bitmaps" },
+    { allow = ["MPL-2.0"], crate = "sized-chunks" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

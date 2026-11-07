@@ -21,7 +21,7 @@ const appPort = server.address().port;
 
 const chrome = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const profile = mkdtempSync(join(tmpdir(), "cn-e2e-"));
-const proc = spawn(chrome, ["--headless=new", "--disable-gpu", `--user-data-dir=${profile}`, "--remote-debugging-port=0", "--window-size=1440,900", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+const proc = spawn(chrome, [...(process.env.CI ? ["--no-sandbox"] : []), "--headless=new", "--disable-gpu", `--user-data-dir=${profile}`, "--remote-debugging-port=0", "--window-size=1440,900", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
 const wsBase = await new Promise((resolve, reject) => {
   let log = ""; proc.stderr.on("data", d => { log += d; const m = log.match(/ws:\/\/[^\s]+/); if (m) resolve(m[0]); });
   setTimeout(() => reject(new Error("Chrome did not start")), 20000);

@@ -16,3 +16,4 @@
 | 10 | 2026-11-07 | "Yes for all": no enterprise edition in this repo; the name CasualNote; the 11 launch languages; direct to `main` with `git init`, and OpenPresent's working rules; run the fresh review | Active | `DEC-01`, `DEC-02`, `DEC-06`, `DEC-09`, `DEC-12`, `DOC-008` |
 | 11 | 2026-11-07 | The repo is empty apart from docs and a few Python files. Build the product | Active. Waives the Phase D and Phase 0 entry gates, W-1 in [06](06-ROADMAP-AND-DELIVERY.md) | `crates/`, `webapp/` |
 | 12 | 2026-11-07 | Proceed ahead, it is just a few things so far. Free up space. Also focus on UI and UX | Active | `webapp/` |
+| 13 | 2026-11-08 | Push it. Create the repo, create a marketing site, add CI and push | Active | `site/`, `.github/workflows/`, `DEC-12` |

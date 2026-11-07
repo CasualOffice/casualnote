@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<title>CasualNote</title>
+<meta name="description" content="A local-first workspace for documents, databases, canvas and pen, in every language. Apache-2.0 all the way through.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top wrap">
+  <a class="brand" href="#">CasualNote</a>
+  <nav aria-label="Main">
+    <a href="#page">Product</a>
+    <a href="#ai">AI</a>
+    <a href="#status">Status</a>
+    <a href="https://github.com/CasualOffice/casualnote">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <h1>Notes in any language, on your machine, under a licence that stays open.</h1>
+    <div class="lede">
+      <p>Documents, databases, canvas and pen, with a knowledge graph and an optional assistant you control.</p>
+      <div class="cta">
+        <a class="btn primary" href="app/?demo=1">Try it in your browser</a>
+        <a class="btn" href="https://github.com/CasualOffice/casualnote">Read the source</a>
+      </div>
+      <p class="note">Early and unreleased. Your notes stay in your browser, so keep an export of anything you care about.</p>
+    </div>
+  </section>
+
+  <figure class="stage wrap-wide">
+    <picture>
+      <source srcset="assets/app-page-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="assets/app-page.png" width="2880" height="1800" alt="CasualNote showing a launch plan page with a task board embedded in the text, an outline and a map of connected pages.">
+    </picture>
+  </figure>
+
+  <section id="page" class="split wrap">
+    <div class="copy">
+      <h2>One page. Write it, then lay it out.</h2>
+      <p>A switch turns any page into a canvas. Your text moves onto it as a card you can still edit, next to sticky notes, shapes, arrows and pen strokes.</p>
+      <ul>
+        <li>Slash menu, Markdown shortcuts, links between pages, backlinks</li>
+        <li>Pressure-aware ink, with partial erase</li>
+        <li>Databases with table and board views, inside any page</li>
+      </ul>
+    </div>
+    <img class="shot" src="assets/app-canvas.png" width="2880" height="1800" loading="lazy" alt="The same page shown as a canvas, with its text in a card beside sticky notes, shapes, an arrow and a pen circle.">
+  </section>
+
+  <section class="tongues" aria-labelledby="tongues">
+    <div class="wrap">
+      <h2 id="tongues">Multilingual from the first commit.</h2>
+      <p class="sub">Input methods, right-to-left layout and search are requirements in every language, not translations added later.</p>
+    </div>
+    <ul class="lines wrap" lang="mul">
+      <li lang="zh-Hans">离线也能用，笔记归你所有。</li>
+      <li lang="ar" dir="rtl">ملاحظاتك تبقى لك، حتى دون اتصال.</li>
+      <li lang="hi">आपके नोट्स आपके ही रहते हैं।</li>
+      <li lang="ja">ノートはあなたのもの。</li>
+      <li lang="es">Tus notas siguen siendo tuyas.</li>
+    </ul>
+    <p class="wrap fine">Translations of the interface are drafts until reviewed by native speakers.</p>
+  </section>
+
+  <section id="knowledge" class="flip wrap">
+    <img class="shot" src="assets/app-graph.png" width="2880" height="1800" loading="lazy" alt="A knowledge graph of pages, tags, database rows and people.">
+    <div class="copy">
+      <h2>See how your notes connect.</h2>
+      <p>The graph is worked out from your pages, tags, tasks and people. It holds nothing of its own, so it always agrees with your notes. Connections you made and connections that were guessed look different.</p>
+    </div>
+  </section>
+
+  <section id="ai" class="ai wrap">
+    <h2>AI you can turn off, and that asks first.</h2>
+    <div class="two">
+      <div>
+        <h3>On the web</h3>
+        <p>Connect your own provider with your own key: Anthropic, or anything OpenAI-compatible. Nothing is sent until you set it up, and the panel names where your notes are going.</p>
+      </div>
+      <div>
+        <h3>On desktop</h3>
+        <p>Download a model and run it on your computer, so your notes stay there. Being built now.</p>
+      </div>
+    </div>
+    <p class="strong">The assistant cannot change a note without your approval. Every change it proposes shows what it will do and what it read, and undoes in one step. Other tools can connect through MCP, using the same set of tools.</p>
+  </section>
+
+  <section class="keep wrap">
+    <div class="copy">
+      <h2>Leave whenever you like.</h2>
+      <p>Export is one documented file with plain Markdown inside. A small script with no dependencies on us can check and unpack it.</p>
+    </div>
+<pre><code>$ python3 tools/cnotepack.py extract notes.cnotepack ./out
+$ ls out/readable
+Beta launch plan.md   读书笔记.md   ...</code></pre>
+  </section>
+
+  <section id="status" class="status wrap">
+    <h2>Where it stands</h2>
+    <p class="sub">We would rather you know now.</p>
+    <dl>
+      <div><dt>Works in the browser</dt><dd>Writing, links, databases, canvas and pen, search, knowledge graph, export and import, six interface languages</dd></div>
+      <div><dt>Works, with limits</dt><dd>The assistant and MCP server have only been tested against a stand-in provider. Pen has not been judged on real devices. Related pages use shared words for now, not meaning</dd></div>
+      <div><dt>Being built</dt><dd>Desktop app with local models, durable storage, encrypted sync, real embeddings</dd></div>
+      <div><dt>Later</dt><dd>Self-hosted server for teams, mobile apps</dd></div>
+    </dl>
+  </section>
+
+  <section class="licence">
+    <div class="wrap">
+      <h2>Apache-2.0. All of it.</h2>
+      <p>The engine, the apps and the server to come. No enterprise edition, no licence key and no paid folder in this repository.</p>
+      <a class="btn primary" href="app/?demo=1">Try it in your browser</a>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <span>CasualNote, part of <a href="https://github.com/CasualOffice">CasualOffice</a></span>
+  <span><a href="https://github.com/CasualOffice/casualnote/blob/main/LICENSE">Apache-2.0</a></span>
+</footer>
+</body>
+</html>

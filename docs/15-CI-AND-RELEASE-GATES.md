@@ -2,7 +2,7 @@
 
 CI is part of the architecture. Job names are a contract, and a change does not land until they pass. Adapted from OpenCalc's and OpenPresent's docs/15.
 
-**Current state:** no repository, so no CI (`GOV-01`, `GOV-03`). Today `tools/check-docs.py` and `tools/test_cnotepack.py` run by hand. Everything else below is the target.
+**Current state:** `.github/workflows/ci.yml` runs `checks`, `fmt-clippy`, `test` on three platforms, `wasm`, `licence` and `browser`, and `pages.yml` deploys the site and demo. Everything else below is the target.
 
 ## Test levels
 

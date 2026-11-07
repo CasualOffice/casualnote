@@ -30,6 +30,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+Geist and Geist Mono fonts, SIL Open Font License 1.1, Copyright (c) 2023 Vercel, in
+collaboration with basement.studio, in site/assets.
+
+The engine depends on im, bitmaps and sized-chunks through Loro, unmodified, under MPL-2.0,
+whose source is available from crates.io.
+
 The prototype loads the Geist, Geist Mono and Noto Sans fonts from Google Fonts when
 opened. They are not stored in this repository.
 

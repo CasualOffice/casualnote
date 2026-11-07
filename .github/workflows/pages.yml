@@ -1,0 +1,45 @@
+name: pages
+
+# The website, with the real web app at /app/.
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "webapp/**", "crates/**", "Cargo.lock", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - run: rustup show
+      - run: tools/build-wasm.sh --release
+      - name: Assemble
+        run: |
+          mkdir -p _site/app/tests
+          cp -R site/. _site/
+          cp -R webapp/app.js webapp/data.js webapp/store.js webapp/style.css webapp/index.html webapp/features _site/app/
+          cp webapp/tests/demo.js _site/app/tests/
+          mkdir -p _site/app/pkg
+          cp webapp/pkg/casual_note_wasm.js webapp/pkg/casual_note_wasm_bg.wasm _site/app/pkg/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

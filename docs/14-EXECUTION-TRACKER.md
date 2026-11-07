@@ -17,7 +17,7 @@
 | DEC-09 | Launch languages | Done | Owner, 2026-11-07: **English, Simplified and Traditional Chinese, Japanese, Korean, Spanish, French, German, Portuguese, Arabic, Hindi** | Translation and testing cost | Done |
 | DEC-10 | Default local model | Open | Qwen3 4B, pending `SPK-07` | First impression on desktop | Phase 6 |
 | DEC-11 | Accent colour | Open | Keep the prototype's cobalt, `#1f47d6` | Distinct from OpenCalc and OpenPresent | Phase 2 |
-| DEC-12 | `git init` and the GitHub repo | In progress | Owner, 2026-11-07: `git init` **yes,** done locally. The remote is not created yet. Proposed: `CasualOffice/casualnote` | CI needs a remote | `GOV-03` |
+| DEC-12 | `git init` and the GitHub repo | Done | Owner, 2026-11-08: create and push. `CasualOffice/casualnote`, private until the owner chooses public | CI and the site need a remote | Done |
 
 ## Phase D — Design
 
@@ -46,9 +46,10 @@
 | --- | --- | --- | --- | --- | --- |
 | GOV-01 | `git init`, hooks, commit rules | Done | P0 | `.githooks/pre-commit` runs `check-docs.py` and the reader tests. `.githooks/commit-msg` requires Conventional Commits. Enable with `git config core.hooksPath .githooks` | A broken doc and a bad message were each seen refused |
 | GOV-02 | Cargo workspace, toolchain, lints | Done | P0 | Cargo workspace, pinned toolchain, lints. Builds to native and wasm32 | `cargo check` on both targets |
-| GOV-03 | CI on three platforms | Blocked | P0 | Waits on `DEC-12`: no remote exists. [15](15-CI-AND-RELEASE-GATES.md) | Seeded violation fails each job |
+| GOV-03 | CI on three platforms | In progress | P0 | `.github/workflows/ci.yml`. Seeded failures per job not yet proven | Seeded violation fails each job |
 | GOV-04 | Crate dependency gate | Open | P0 | `check-crate-deps.py`: layer rules, only `-merge` names `loro` | Seeded edge fails |
-| GOV-05 | Licence gate | Open | P0 | `cargo deny`, weights and fonts list | Seeded GPL crate fails |
+| GOV-05 | Licence gate | In progress | P0 | `deny.toml`. Named MPL exceptions: im, bitmaps, sized-chunks, through Loro | Seeded GPL crate fails |
+| WEB-07 | Marketing site and hosted demo | In progress | P1 | `site/`, `.github/workflows/pages.yml`, real app at `/app/`. Pages needs a public repository on this plan | Page live |
 | GOV-06 | Host-seam gate | Open | P1 | Copied from OpenCalc's `check-host-seams.py` | Seeded `cfg` fails |
 | GOV-07 | Fuzz workspace | Open | P0 | Separate workspace, pinned nightly | One target runs |
 | SPK-01 | Merge: does Loro survive years of notes? | Open | P0 | 5-year, 3-device simulated history, including 90 days offline, and real notes in the launch languages. Decides ADR-005, ADR-006, ADR-010 | Pass and fail in [24](24-OPERATIONS-AND-MERGE.md) |
