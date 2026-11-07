@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "casual-note-wasm"
 version = "0.0.0"
 edition.workspace = true
@@ -16,6 +17,9 @@ casual-note-search = { path = "../casual-note-search" }
 casual-note-graph = { path = "../casual-note-graph" }
 casual-note-package = { path = "../casual-note-package" }
 casual-note-tools = { path = "../casual-note-tools" }
+casual-note-store = { path = "../casual-note-store" }
+casual-note-sync = { path = "../casual-note-sync" }
+casual-note-embed = { path = "../casual-note-embed" }
 serde_json = "1"
 wasm-bindgen = "0.2"
 

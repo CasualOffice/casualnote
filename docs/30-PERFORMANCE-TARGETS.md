@@ -40,3 +40,20 @@ To be named in `SPK-02`: a mid-range laptop and an old laptop, both on the Chrom
 ## How regressions are caught
 
 As OpenCalc: versioned JSON reports, committed baselines per named machine, and a regression threshold in CI. A claim such as "fast" or "light" cannot appear in public text without a row here with a measured result.
+
+## Measured, 2026-11-08
+
+Apple M4, 16 GB, Chrome only, on a loaded machine and uncommitted code based on `7d473f0`. Treat as indicative.
+
+| Measure | Target | Result | State |
+| --- | --- | --- | --- |
+| Typing, 5,000-block page, p95 | 16 ms | 174 ms; 89 ms with fixes not applied; 11.7 ms at 300 blocks | Fail |
+| Opening that page | | 2.7 to 3.5 s | |
+| Search, 100,000 pages, wasm, p95 | 50 ms | 223 ms | Fail |
+| 5-year history, 3 devices | No panic | Loro panics on snapshot import, 2 of 2 seeds | Fail |
+| Hostile imports | No panic | 0 of 3,000 | Pass |
+| First load | | 0.46 to 1.4 s, wasm 4.28 MB | |
+| Meaning search, MiniLM on tract in wasm | | 57 ms query, 41 ms scan | |
+| Log write per keystroke, dev build | | 168 bytes, 23 to 54 ms in the worker | |
+
+Not measured: load time, size against content and memory at 5 years; other browsers; an idle machine.

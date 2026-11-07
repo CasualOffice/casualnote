@@ -1,0 +1,46 @@
+[
+  {
+    "id": "qwen3-1.7b",
+    "name": "Qwen3 1.7B",
+    "position": "Smallest",
+    "licence": "Apache-2.0",
+    "licence_url": "https://www.apache.org/licenses/LICENSE-2.0",
+    "url": "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/d7f544eead698dbd1f15126ef60b45a1e1933222/Qwen3-1.7B-Q4_K_M.gguf",
+    "bytes": 1107409472,
+    "sha256": "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897",
+    "hosts": ["huggingface.co", "*.huggingface.co", "*.hf.co"]
+  },
+  {
+    "id": "qwen3-4b",
+    "name": "Qwen3 4B",
+    "position": "Suggested first try",
+    "licence": "Apache-2.0",
+    "licence_url": "https://www.apache.org/licenses/LICENSE-2.0",
+    "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf",
+    "bytes": 2497280256,
+    "sha256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
+    "hosts": ["huggingface.co", "*.huggingface.co", "*.hf.co"]
+  },
+  {
+    "id": "phi-4-mini",
+    "name": "Phi-4-mini",
+    "position": "For comparison",
+    "licence": "MIT",
+    "licence_url": "https://opensource.org/license/mit",
+    "url": "https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/78eb92a46fc37e6b524df991ed9aca9bc6aa7b80/Phi-4-mini-instruct-Q4_K_M.gguf",
+    "bytes": 2491874272,
+    "sha256": "88c00229914083cd112853aab84ed51b87bdf6b9ce42f532d8c85c7c63b1730a",
+    "hosts": ["huggingface.co", "*.huggingface.co", "*.hf.co"]
+  },
+  {
+    "id": "qwen3-8b",
+    "name": "Qwen3 8B",
+    "position": "Largest",
+    "licence": "Apache-2.0",
+    "licence_url": "https://www.apache.org/licenses/LICENSE-2.0",
+    "url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/7c41481f57cb95916b40956ab2f0b139b296d974/Qwen3-8B-Q4_K_M.gguf",
+    "bytes": 5027783488,
+    "sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
+    "hosts": ["huggingface.co", "*.huggingface.co", "*.hf.co"]
+  }
+]

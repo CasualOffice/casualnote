@@ -23,10 +23,11 @@
 | Engine: pages, blocks, undo, merging | **Works, with tests** |
 | Web app: blocks, links, backlinks, embeds, databases, canvas and pen, search, knowledge graph, export and import, six interface languages | **Works, tested in Chrome** |
 | Assistant with your own provider, MCP server | **Works, tested with a fake provider only** |
-| Real embeddings, durable log storage | Next |
-| Desktop app, sync, server | Not started |
+| Durable log storage, encrypted folder sync, optional real embeddings | **Works, with tests.** Power loss on OPFS unverified, and the encryption has had no outside review |
+| Desktop app, macOS only | **Runs. No real model has run.** Not sandboxed |
+| Server | Not started |
 
-Nothing has been measured. Performance figures in the docs are targets.
+**Measured at scale, and failing:** Loro panics importing a simulated 5-year snapshot, typing on a 5,000-block page takes 174 ms against a 16 ms target, and search over 100,000 pages takes 223 ms against 50 ms. See docs/14, `SPK-01`, `SPK-02`, `SPK-05`.
 
 ## Run it
 

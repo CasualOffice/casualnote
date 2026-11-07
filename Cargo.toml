@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["crates/casual-note-model", "crates/casual-note-merge", "crates/casual-note-ops", "crates/casual-note-wasm", "crates/casual-note-search", "crates/casual-note-graph", "crates/casual-note-package", "crates/casual-note-tools", "server/casual-note-mcp"]
+exclude = ["desktop"]
+members = ["crates/casual-note-model", "crates/casual-note-merge", "crates/casual-note-ops", "crates/casual-note-wasm", "crates/casual-note-search", "crates/casual-note-graph", "crates/casual-note-package", "crates/casual-note-tools", "crates/casual-note-store", "crates/casual-note-sync", "server/casual-note-mcp", "tools/casual-note-bench", "crates/casual-note-embed"]
 
 [workspace.package]
 edition = "2024"

@@ -1,0 +1,48 @@
+/* Local models and the notes file in Settings, desktop only. Tokens and logical properties. See docs/49. */
+.dsk-line { margin: 0; font-size: var(--t-13); color: var(--muted); overflow-wrap: anywhere; }
+.dsk-line b { color: var(--fg); font-weight: 600; }
+.dsk-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-block-start: 8px; }
+.dsk-actions .btn:disabled { background: var(--tint); border-color: var(--line); color: var(--faint); cursor: default; }
+.dsk-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: var(--t-14); }
+
+.dsk-runtime { display: flex; flex-direction: column; gap: 4px; margin-block-start: 8px; }
+.dsk-steps { margin: 4px 0 0; padding-inline-start: 22px; font-size: var(--t-13); color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.dsk-steps code { font-family: var(--mono); font-size: var(--t-12); background: var(--tint); border-radius: var(--radius); padding-block: 1px; padding-inline: 4px; color: var(--fg); unicode-bidi: isolate; }
+.dsk-ollama:not(:empty) { margin-block-start: 8px; }
+
+/* Hairlines, not cards: a list in the page. */
+.dsk-models { margin-block-start: 16px; border-block-start: 1px solid var(--line); }
+.dsk-model { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding-block: 10px; border-block-end: 1px solid var(--line); }
+.dsk-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; font-size: var(--t-14); }
+.dsk-title b { font-weight: 600; }
+.dsk-position { color: var(--muted); font-size: var(--t-12); }
+.dsk-size { font-size: var(--t-13); color: var(--muted); font-variant-numeric: tabular-nums; text-align: end; }
+.dsk-model > .dsk-state, .dsk-model > .dsk-bar, .dsk-model > .dsk-actions, .dsk-model > div:last-child { grid-column: 1 / -1; }
+.dsk-state { font-variant-numeric: tabular-nums; margin-block-start: 2px; }
+
+/* docs/49: a 3px --strong bar, by transform, origin by direction. */
+.dsk-bar { height: 3px; margin-block-start: 6px; background: var(--line); overflow: hidden; }
+.dsk-bar[hidden] { display: none; }
+.dsk-bar > span { display: block; height: 100%; background: var(--strong); transform: scaleX(0); transform-origin: left; }
+[dir="rtl"] .dsk-bar > span { transform-origin: right; }
+@media (prefers-reduced-motion: no-preference) { .dsk-bar > span { transition: transform .2s linear; } }
+
+.dsk-ask { margin-block-start: 8px; padding-block-start: 8px; border-block-start: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.dsk-facts { margin: 0; display: grid; gap: 2px; font-size: var(--t-13); }
+.dsk-facts > div { display: grid; grid-template-columns: 10em minmax(0, 1fr); gap: 8px; }
+.dsk-facts dt { color: var(--muted); }
+.dsk-facts dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+[dir="rtl"] .dsk-facts dd[dir="ltr"] { text-align: end; }
+
+.dsk-error { display: flex; flex-direction: column; gap: 4px; margin-block-start: 8px; font-size: var(--t-13); }
+.dsk-error-line { display: flex; gap: 6px; align-items: flex-start; color: var(--danger, var(--ink-red)); }
+.dsk-error-line .i { flex: none; margin-block-start: 2px; }
+.dsk-error-line.dsk-plain { color: var(--fg); }
+.dsk-detail { color: var(--muted); overflow-wrap: anywhere; }
+.dsk-code { color: var(--muted); font-size: var(--t-12); font-variant-numeric: tabular-nums; }
+
+.dsk-notsandbox { margin-block-start: 16px; padding-block: 10px; padding-inline: 12px; background: var(--tint); border-radius: var(--radius); display: flex; flex-direction: column; gap: 4px; font-size: var(--t-13); }
+
+/* The one thing that must stay in view: a save to the notes file failed. */
+.dsk-banner { position: fixed; inset-block-end: 12px; inset-inline-start: 50%; transform: translateX(-50%); z-index: 95; display: flex; gap: 6px; align-items: flex-start; max-width: min(560px, calc(100vw - 32px)); padding-block: 6px; padding-inline: 12px; background: var(--strong); color: var(--bg); border-radius: var(--radius); box-shadow: var(--shadow); font-size: var(--t-13); }
+[dir="rtl"] .dsk-banner { transform: translateX(50%); }

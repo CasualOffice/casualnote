@@ -17,3 +17,4 @@
 | 11 | 2026-11-07 | The repo is empty apart from docs and a few Python files. Build the product | Active. Waives the Phase D and Phase 0 entry gates, W-1 in [06](06-ROADMAP-AND-DELIVERY.md) | `crates/`, `webapp/` |
 | 12 | 2026-11-07 | Proceed ahead, it is just a few things so far. Free up space. Also focus on UI and UX | Active | `webapp/` |
 | 13 | 2026-11-08 | Push it. Create the repo, create a marketing site, add CI and push | Active | `site/`, `.github/workflows/`, `DEC-12` |
+| 14 | 2026-11-08 | Hand the work over complete; the owner creates the repository and pushes themselves. Replaces the repository part of 13 | Active | `DEC-12` |

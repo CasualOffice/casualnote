@@ -251,6 +251,141 @@ export async function run({ api, ok, wait, key, openPage, $, $$, engine, state }
     kg.style.width = "";
     return r;
   });
+  /* Meaning search, through a stand-in behind the seam. The real model is measured by tests/perf.mjs. */
+  const { meaningSeam } = await import("../features/knowledge.js");
+  const standIn = (over = {}) => {
+    const pages = new Map(), calls = [];
+    const host = {
+      calls,
+      async call(type, payload, progress) {
+        calls.push(type);
+        if (over[type]) return over[type](payload, progress);
+        if (type === "start") return { count: 0, pages: [] };
+        if (type === "plan") { const list = JSON.parse(payload.chunks); pages.set(payload.page, list); return { embedded: list.length, count: [...pages.values()].flat().length }; }
+        if (type === "remove") { pages.delete(payload.page); return { count: [...pages.values()].flat().length }; }
+        if (type === "related") return { known: pages.has(payload.page), near: [...pages.keys()].filter(p => p !== payload.page && p.startsWith("mn-")).map(page => ({ page, key: "", score: 800000 })) };
+        if (type === "query") { const near = []; for (const [page, list] of pages) for (const c of list) if (c.input.includes("vaccination")) near.push({ page, key: c.key, score: 700000 }); return { near }; }
+        return { ok: true };
+      },
+      close() { host.closed = true; },
+    };
+    return host;
+  };
+  const openSettings = async () => { api.openView("settings"); await wait(5); };
+  const need = checks => { const bad = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k); if (bad.length) throw new Error("missing: " + bad.join(", ")); return true; };
+  await ok("meaning: off by default, it says so, offers the download and touches no network", async () => {
+    const realFetch = window.fetch, RealWorker = window.Worker;
+    let net = 0;
+    window.fetch = (...a) => { net++; return realFetch(...a); };
+    window.Worker = class extends RealWorker { constructor(...a) { net++; super(...a); } };
+    try {
+      await openSettings();
+      const said = $("#meaningStatus").textContent === "Off. Related pages and search use shared words." && /127 MB|127 Mo/.test($("#meaningGet").textContent);
+      openPage(home); await wait(350);
+      const caption = $("#rpRelated [data-method]")?.dataset.method === "words";
+      openPalette(); query("zzznothingzzz");
+      const hint = $$(".modal .hdr").some(n => n.textContent.includes("Search by meaning is off"));
+      closePalette();
+      return need({ said, caption, hint, quiet: net === 0 });
+    } finally { window.fetch = realFetch; window.Worker = RealWorker; }
+  });
+  await ok("meaning: every new string has a draft in the launch languages tested", async () => {
+    const { I18N } = await import("../data.js");
+    return ["zh-Hans", "ja", "es", "ar", "hi"].every(l => I18N[l]["Search by meaning"] && I18N[l]["Found by meaning, on this device."] && I18N[l]["Matches by meaning"]);
+  });
+  page("mn-dog", "Bruno", "The vet gave a rabies shot, a vaccination, and booked a booster.");
+  page("mn-cat", "狗的疫苗", "兽医打了疫苗 vaccination 记录");
+  await ok("meaning: behind the seam, Related says it used meaning, and a page not read yet says so", async () => {
+    const host = standIn();
+    await meaningSeam.use(host, { afterEdit: 5, inBuild: 0 });
+    const early = meaningSeam.state().state === "indexing";
+    await meaningSeam.settled(); await wait(20);
+    openPage("mn-dog"); await wait(350);
+    const related = $("#rpRelated [data-method]")?.dataset.method === "meaning" && $$("#rpRelated .rel").some(r => r.textContent.includes("狗的疫苗"));
+    return early && meaningSeam.state().state === "ready" && related && host.calls.includes("save");
+  });
+  await ok("meaning: the Settings line says it is on, and how much is indexed", async () => {
+    await openSettings();
+    const r = /^On\. Related pages and search use meaning\./.test($("#meaningStatus").textContent) && !!$("#meaningRemove") && !$("#meaningGet");
+    openPage(home);
+    return r;
+  });
+  await ok("meaning: search keeps exact matches first and labels the rest as by meaning", async () => {
+    openPalette(); query("doggy shots");
+    await wait(220);
+    const none = $("#paletteMeaning") && $$(".modal .mi").some(m => m.textContent.includes("Bruno"));
+    query("rabies"); await wait(220);
+    const order = $$(".modal .list > *").map(n => n.id === "paletteMeaning" ? "group" : n.classList.contains("mi") ? "hit" : "other");
+    const exactFirst = order[0] === "hit" && (order.indexOf("group") === -1 || order.indexOf("group") > 0);
+    closePalette();
+    return need({ none, exactFirst });
+  });
+  await ok("meaning: a meaning result carries no HTML, and opens its page", async () => {
+    openPalette(); query("doggy shots"); await wait(220);
+    const bad = !!$(".modal small img, .modal small script");
+    const hit = $$(".modal .mi").find(m => m.textContent.includes("Bruno"));
+    hit?.click(); await wait(10);
+    const opened = state.cur === "mn-dog";
+    openPage(home);
+    return need({ clean: !bad, opened, hit });
+  });
+  await ok("meaning: an edit is read again after the pause, and a trashed page is dropped", async () => {
+    const host = standIn();
+    meaningSeam.clear();
+    await meaningSeam.use(host, { afterEdit: 5, inBuild: 0 });
+    await meaningSeam.settled();
+    host.calls.length = 0;
+    api.edit({ op: "splice_text", page: "mn-dog", block: "mn-dogb", at: 0, delete: 0, insert: "fresh " });
+    await meaningSeam.settled(); await wait(20);
+    const read = host.calls.filter(c => c === "plan").length === 1;
+    host.calls.length = 0;
+    api.edit({ op: "set_trashed", id: "mn-cat", value: true });
+    await meaningSeam.settled(); await wait(20);
+    const dropped = host.calls.includes("remove") && !host.calls.includes("plan");
+    api.edit({ op: "set_trashed", id: "mn-cat", value: false });
+    await meaningSeam.settled();
+    return read && dropped;
+  });
+  await ok("meaning: an embedder that fails falls back to words, says so, and exact search still works", async () => {
+    const host = standIn({ related: () => { throw new Error("CN-EMB-0006: out of memory"); } });
+    meaningSeam.clear();
+    await meaningSeam.use(host, { afterEdit: 5, inBuild: 0 });
+    await meaningSeam.settled();
+    openPage("mn-dog"); await wait(350);
+    const caption = $("#rpRelated [data-method]")?.dataset.method === "words" && $("#rpRelated [data-method]").textContent.startsWith("Meaning search stopped");
+    await openSettings();
+    const said = $("#meaningStatus").classList.contains("bad") && !!$("#meaningRetry") && $("#meaningDetail").textContent.includes("CN-EMB-0006");
+    openPalette(); query("rabies");
+    const exact = $$(".modal .mi").some(m => m.textContent.includes("Bruno"));
+    closePalette(); openPage(home);
+    return need({ closed: host.closed === true, failed: meaningSeam.state().state === "failed", caption, said, exact });
+  });
+  await ok("meaning: the download shows progress, a failure installs nothing, and cancelling goes back to off", async () => {
+    meaningSeam.clear();
+    let mode = "fail", release;
+    const host = standIn({ install: (_, progress) => {
+      if (mode === "fail") return Promise.reject(new Error("CN-EMB-0006: HTTP 503"));
+      if (mode === "cancel") { const e = new Error("stopped"); e.name = "AbortError"; return Promise.reject(e); }
+      progress({ phase: "downloading", done: 50e6, total: 127e6 });
+      return new Promise(r => { release = r; });
+    } });
+    window.casualNoteHost = { embedder: host };
+    try {
+      await openSettings();
+      $("#meaningGet").click(); await wait(10);
+      const failed = $("#meaningSet").dataset.state === "downloadfailed" && $("#meaningStatus").textContent.startsWith("The download failed") && !!$("#meaningGet");
+      mode = "cancel"; $("#meaningGet").click(); await wait(10);
+      const cancelled = $("#meaningSet").dataset.state === "off";
+      mode = "ok"; $("#meaningGet").click(); await wait(10);
+      const bar = $("#meaningBar"), moving = !bar.hidden && bar.value === 50e6 && /50/.test($("#meaningStatus").textContent);
+      release({ ok: true }); await wait(10);
+      await meaningSeam.settled(); await wait(10);
+      const on = $("#meaningSet").dataset.state === "ready";
+      $("#meaningRemove").click(); await wait(10);
+      const removed = $("#meaningSet").dataset.state === "off" && host.calls.includes("uninstall");
+      return failed && cancelled && moving && on && removed;
+    } finally { delete window.casualNoteHost; meaningSeam.clear(); openPage(home); }
+  });
   // Leaves the graph open for `tools/e2e.mjs --shot`.
   window.__showGraph = async () => { state.view = "graph"; api.renderAll(); $(".zoom .kgfit")?.click(); await wait(30); };
 }

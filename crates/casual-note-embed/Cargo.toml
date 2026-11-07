@@ -1,0 +1,33 @@
+[package]
+publish = false
+name = "casual-note-embed"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+# The inference runtime: never linked into the main engine. See docs/60, "The model is a host seam".
+runtime = ["dep:tract-onnx", "dep:tokenizers"]
+# The browser's separately built module, loaded in a worker only after the model is installed.
+web = ["runtime", "dep:wasm-bindgen", "dep:getrandom", "tract-onnx/getrandom-js"]
+
+[dependencies]
+casual-note-model = { path = "../casual-note-model" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-segmentation = "1"
+tract-onnx = { version = "=0.23.10", default-features = false, optional = true }
+tokenizers = { version = "=0.22.2", default-features = false, features = ["unstable_wasm"], optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+getrandom = { version = "0.3", features = ["wasm_js"], optional = true }
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[lints]
+workspace = true

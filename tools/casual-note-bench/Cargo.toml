@@ -1,0 +1,38 @@
+[package]
+name = "casual-note-bench"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "SPK-01, SPK-05 and SPK-06 experiments on the real engine. Not product code."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "casual-note-bench"
+path = "src/main.rs"
+required-features = ["native"]
+
+[features]
+default = []
+# The command line. Off for the wasm build, which only wants the library.
+native = ["dep:casual-note-embed"]
+# wasm-bindgen entry points, driven from webapp/tests/perf.mjs.
+wasm = ["dep:wasm-bindgen"]
+
+[dependencies]
+casual-note-model = { path = "../../crates/casual-note-model" }
+casual-note-merge = { path = "../../crates/casual-note-merge" }
+casual-note-ops = { path = "../../crates/casual-note-ops" }
+casual-note-search = { path = "../../crates/casual-note-search" }
+casual-note-graph = { path = "../../crates/casual-note-graph" }
+# SPK-01 may name the library directly (docs/24): only the same-peer check does.
+loro = "=1.17.1"
+serde_json = "1"
+casual-note-embed = { path = "../../crates/casual-note-embed", features = ["runtime"], optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

@@ -266,6 +266,11 @@ Stable, and never reused. **The contract:** messages carry ids and counts, never
 | CN-MDL-0008 | Port check failed: the server accepted a request it should refuse |
 | CN-MDL-0009 | Ollama or external server not found |
 | CN-MDL-0010 | Bind, then verify |
+| CN-MDL-0011 | A catalogue model has no hash pin, so it will not download |
+| CN-MDL-0012 | No `llama-server` was found |
+| CN-MDL-0013 | Another download is running |
+| CN-MDL-0014 | The local model is not running |
+| CN-DSK-0020 | The notes file could not be written |
 
 ## Agent tools (`CN-TOL`), see [63](63-AGENT-TOOLS-AND-MCP.md)
 

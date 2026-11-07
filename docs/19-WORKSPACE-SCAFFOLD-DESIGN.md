@@ -63,3 +63,13 @@ Prefix: `casual-note-`.
 ## Provenance
 
 Each copied crate carries a `PROVENANCE.md` naming the OpenCalc commit and local changes, as OpenPresent does.
+
+## Added 2026-11-08
+
+| Crate | Purpose | Notable dependencies |
+| --- | --- | --- |
+| `casual-note-store` | Durable log over a host seam | |
+| `casual-note-sync` | Encrypted folder sync | RustCrypto Argon2 and XChaCha20-Poly1305; `subtle` is BSD-3 |
+| `casual-note-embed` | Optional on-device embeddings; the model is downloaded on request, never bundled | tract |
+| `casual-note-bench` | Scale experiments, unpublished | |
+| `desktop/` | Tauri 2 shell, its own workspace | Tauri |

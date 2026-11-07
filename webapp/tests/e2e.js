@@ -7,6 +7,9 @@ export async function runE2E({ api, engine, store, state, undoStack, replay, red
   const key = (n, k, o = {}) => n.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }));
   const first = () => $(".blocks .t");
   const type = s => document.execCommand("insertText", false, s);
+  // The checks that need a real page reload resume here, from sessionStorage.
+  const { resumeAfterReload, reloadChecks } = await import("./sync.test.js");
+  if (await resumeAfterReload({ api, engine, store, state, $, $$, openPage, wait, setCaret, textOf, first, type })) return;
 
   await ok("app boots with a real engine", () => !!first() && pageNow().blocks.length >= 1);
   await ok("typing reaches the engine", () => { setCaret(first()); type("hello world"); return texts()[0] === "hello world"; });
@@ -58,11 +61,12 @@ export async function runE2E({ api, engine, store, state, undoStack, replay, red
     renderAll();
     return engine.page(state.cur) === other.page(state.cur) && texts()[0].startsWith("FROM OTHER ") && texts()[0].endsWith(" local");
   });
-  for (const name of ["links", "database", "canvas", "knowledge", "package", "assistant"]) {
+  for (const name of ["links", "database", "canvas", "knowledge", "package", "assistant", "desktop", "sync"]) {
     const mod = await import(`./${name}.test.js`);
     await mod.run({ api, ok, wait, key, type, texts, first, pageNow, engine, state, store, setCaret, textOf, openPage, $, $$ });
   }
   await uxTests({ api, ok, wait, key, type, texts, first, pageNow, engine, state, store, setLang, renderAll, undoStack, redoStack, replay, openPage, setCaret, textOf, $, $$ });
+  if (await reloadChecks({ out, api, engine, store })) return;
   document.body.setAttribute("data-e2e", out.join("\n"));
 }
 
@@ -689,13 +693,13 @@ async function uxTests({ api, ok: okBase, wait, key, type, texts, first, pageNow
   });
   await ok("ux: a failed save says so, offers export, and clears once saving works", async () => {
     blank("rescue this text");
-    const real = IDBObjectStore.prototype.put;
-    IDBObjectStore.prototype.put = () => { throw new DOMException("full", "QuotaExceededError"); };
+    const real = store.host.run;
+    store.host.run = async () => ({ error: "QuotaExceededError: full", nospace: true });
     const warned = console.error; console.error = () => {};
     await until(() => $("#saved").textContent !== "Saving"); // Whatever was already writing.
     store.changed(); await until(() => !$("#banner").hidden);
     console.error = warned;
-    IDBObjectStore.prototype.put = real;
+    store.host.run = real;
     const banner = $("#banner"), failed = !banner.hidden && banner.getAttribute("role") === "alert" && $("#saved").textContent.startsWith("Not saved") && $("#saved").classList.contains("bad");
     let file = null; const click = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function () { file = this.download; };

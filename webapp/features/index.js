@@ -10,9 +10,11 @@
 //   onChange: [op => void]                        called after every operation
 //   pageView: page => boolean                     draw this page yourself, return true
 // A feature that fails to load must not take the editor down.
-const FEATURES = ["links", "database", "canvas", "knowledge", "package", "assistant"];
+const FEATURES = ["links", "database", "canvas", "knowledge", "package", "assistant", "desktop", "sync"];
 
 export async function loadFeatures(api) {
+  // Before any feature can edit: the log saves from this engine, whichever features load.
+  api.store.bind?.(api.engine);
   for (const name of FEATURES) {
     document.head.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href: `features/${name}.css` }));
     try {

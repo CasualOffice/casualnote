@@ -11,6 +11,11 @@ use loro::{
 };
 use std::collections::BTreeMap;
 
+mod durable;
+pub use durable::{
+    DocImport, DocUpdate, Overlap, Replica, SaveCursor, TREE_DOC, build_container, parse_container,
+};
+
 const MAGIC: &[u8; 5] = b"CNWS1";
 const MAX_DOCS: usize = 1_000_000;
 

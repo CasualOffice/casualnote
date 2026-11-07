@@ -1,0 +1,22 @@
+[package]
+publish = false
+name = "casual-note-sync"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+casual-note-model = { path = "../casual-note-model" }
+casual-note-merge = { path = "../casual-note-merge" }
+casual-note-store = { path = "../casual-note-store" }
+argon2 = { version = "=0.5.3", default-features = false, features = ["alloc"] }
+chacha20poly1305 = { version = "=0.10.1", default-features = false, features = ["alloc"] }
+hkdf = "=0.12.4"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-normalization = "0.1"
+
+[lints]
+workspace = true

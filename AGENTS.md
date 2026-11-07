@@ -37,4 +37,4 @@ A production-grade, multilingual, local-first block workspace with a determinist
 
 ## Current state
 
-**Building, on the owner's instruction 11.** The engine and web app run, with databases, canvas, graph, search, export, assistant and MCP. Design review `DOC-009` and the Phase D and Phase 0 gates were waived to start. See [docs/06](docs/06-ROADMAP-AND-DELIVERY.md). Keep this section agreeing with the README's Status.
+**Scale spikes `SPK-01`, `SPK-02`, `SPK-05` failed on 2026-11-08: read docs/14 first.** **Building, on the owner's instruction 11.** The engine and web app run, with databases, canvas, graph, search, export, assistant and MCP. Design review `DOC-009` and the Phase D and Phase 0 gates were waived to start. See [docs/06](docs/06-ROADMAP-AND-DELIVERY.md). Keep this section agreeing with the README's Status.

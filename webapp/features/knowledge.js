@@ -5,6 +5,7 @@
 import { I18N } from "../data.js";
 
 let api;
+const IN_WORKER = typeof document === "undefined";
 const SVG = "http://www.w3.org/2000/svg";
 const MAX_NODES = 2000, MAX_EDGES = 10000, SYNC_LAYOUT_NODES = 200, LOCAL_NODES = 14;
 const REDUCED = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -17,7 +18,14 @@ const STRINGS = {
   ar: { "Similar pages are found by shared words, not by meaning.": "تُحدَّد الصفحات المتشابهة بالكلمات المشتركة، لا بالمعنى.", "Nothing is connected yet. Link pages with [[, add #tags or a database, and the connections appear here.": "لا توجد روابط بعد. اربط الصفحات باستخدام [[ أو أضف #وسومًا أو قاعدة بيانات، وستظهر الروابط هنا.", "Everything is filtered out. Turn a filter back on.": "كل شيء مُخفى بالتصفية. أعد تشغيل أحد عوامل التصفية.", "The graph could not be built.": "تعذر إنشاء الرسم البياني.", "Try again": "إعادة المحاولة", "Show as list": "عرض كقائمة", "Show as graph": "عرض كرسم بياني", "Filters": "التصفية", "Zoom in": "تكبير", "Zoom out": "تصغير", "Fit": "ملاءمة", "Arranging {n} nodes": "جارٍ ترتيب {n} عقدة", "Showing {n} of {m} nodes, the most connected.": "عرض {n} من {m} عقدة، الأكثر ارتباطًا.", "Select a node to see what it connects to.": "حدد عقدة لرؤية ما ترتبط به.", "Similar, computed": "مشابه، محسوب", "Open its page": "فتح صفحتها", "Clear selection": "إلغاء التحديد", "and {n} more": "و{n} أخرى", "Page": "صفحة", "Tag": "وسم", "Database row": "صف قاعدة بيانات", "Person": "شخص", "links to": "يرتبط بـ", "linked from": "مرتبط من", "embeds": "يضمّن", "embedded in": "مضمّن في", "has subpage": "له صفحة فرعية", "subpage of": "صفحة فرعية من", "tagged": "موسوم", "tag on": "وسم على", "contains": "يحتوي", "row in": "صف في", "involves": "يخص", "owner or author of": "مالك أو مؤلف", "Links to removed pages: {n}": "روابط إلى صفحات محذوفة: {n}", "Search failed.": "فشل البحث.", "Pages and items connected to this page": "الصفحات والعناصر المرتبطة بهذه الصفحة", "Knowledge graph of pages, tags, rows and people": "رسم بياني معرفي للصفحات والوسوم والصفوف والأشخاص", "Link to {page}": "ربط بـ {page}" },
   hi: { "Similar pages are found by shared words, not by meaning.": "समान पेज साझा शब्दों से पहचाने जाते हैं, अर्थ से नहीं।", "Nothing is connected yet. Link pages with [[, add #tags or a database, and the connections appear here.": "अभी कोई संबंध नहीं है। [[ से पेज जोड़ें, #टैग या डेटाबेस जोड़ें, और संबंध यहाँ दिखेंगे।", "Everything is filtered out. Turn a filter back on.": "सब कुछ फ़िल्टर से छिपा है। कोई फ़िल्टर फिर चालू करें।", "The graph could not be built.": "ग्राफ़ नहीं बन सका।", "Try again": "फिर कोशिश करें", "Show as list": "सूची में दिखाएँ", "Show as graph": "ग्राफ़ में दिखाएँ", "Filters": "फ़िल्टर", "Zoom in": "बड़ा करें", "Zoom out": "छोटा करें", "Fit": "फ़िट करें", "Arranging {n} nodes": "{n} नोड व्यवस्थित हो रहे हैं", "Showing {n} of {m} nodes, the most connected.": "{m} में से {n} नोड दिख रहे हैं, सबसे अधिक जुड़े हुए।", "Select a node to see what it connects to.": "संबंध देखने के लिए कोई नोड चुनें।", "Similar, computed": "समान, गणना से", "Open its page": "उसका पेज खोलें", "Clear selection": "चयन हटाएँ", "and {n} more": "और {n}", "Page": "पेज", "Tag": "टैग", "Database row": "डेटाबेस पंक्ति", "Person": "व्यक्ति", "links to": "लिंक करता है", "linked from": "से लिंक", "embeds": "एम्बेड करता है", "embedded in": "में एम्बेड", "has subpage": "उप-पेज", "subpage of": "का उप-पेज", "tagged": "टैग", "tag on": "टैग इन पर", "contains": "में शामिल", "row in": "पंक्ति इसमें", "involves": "संबंधित", "owner or author of": "स्वामी या लेखक", "Links to removed pages: {n}": "हटाए गए पेजों के लिंक: {n}", "Search failed.": "खोज विफल रही।", "Pages and items connected to this page": "इस पेज से जुड़े पेज और आइटम", "Knowledge graph of pages, tags, rows and people": "पेज, टैग, पंक्ति और लोगों का नॉलेज ग्राफ़", "Link to {page}": "{page} से लिंक करें" },
 };
-for (const [lang, table] of Object.entries(STRINGS)) if (I18N[lang]) for (const [k, v] of Object.entries(table)) I18N[lang][k] ??= v;
+const MEANING_STRINGS = {
+  "zh-Hans": {"Search by meaning": "按含义搜索", "Optional. Finds notes and related pages by what they mean, in any language, with a model that runs on this device. Your notes are not sent anywhere.": "可选功能。使用在本设备上运行的模型，按含义查找笔记和相关页面，支持任何语言。你的笔记不会发送到任何地方。", "Off. Related pages and search use shared words.": "已关闭。相关页面和搜索使用共同词语。", "Download model ({size})": "下载模型（{size}）", "Downloaded once from huggingface.co. {model}, licence {licence}.": "只从 huggingface.co 下载一次。{model}，许可证 {licence}。", "Downloading: {done} of {total}": "正在下载：{done} / {total}", "Cancel": "取消", "Checking the download": "正在校验下载内容", "Starting the model": "正在启动模型", "On. Reading your notes: {done} of {total} pages. Shared words are used for pages not read yet.": "已开启。正在读取笔记：{done} / {total} 页。尚未读取的页面使用共同词语。", "On. Related pages and search use meaning. {count} pieces of text are indexed on this device.": "已开启。相关页面和搜索使用含义。本设备已索引 {count} 段文字。", "Remove model": "移除模型", "Meaning search stopped. Related pages and search use shared words.": "按含义搜索已停止。相关页面和搜索使用共同词语。", "The download failed. Nothing was installed.": "下载失败，未安装任何内容。", "This build has no runtime for meaning search. Related pages and search use shared words.": "此版本没有按含义搜索的运行组件。相关页面和搜索使用共同词语。", "Found by meaning, on this device.": "按含义查找，在本设备上完成。", "Found by shared words.": "按共同词语查找。", "Found by shared words. This page has not been read for meaning yet.": "按共同词语查找。此页面尚未按含义读取。", "Matches by meaning": "按含义匹配", "No exact matches. Search by meaning is off; turn it on in Settings.": "没有完全匹配。按含义搜索已关闭，可在设置中开启。"},
+  ja: {"Search by meaning": "意味で検索", "Optional. Finds notes and related pages by what they mean, in any language, with a model that runs on this device. Your notes are not sent anywhere.": "任意の機能です。この端末で動くモデルを使い、どの言語でも意味からノートや関連ページを探します。ノートはどこにも送信されません。", "Off. Related pages and search use shared words.": "オフ。関連ページと検索は共通の語句を使います。", "Download model ({size})": "モデルをダウンロード（{size}）", "Downloaded once from huggingface.co. {model}, licence {licence}.": "huggingface.co から一度だけダウンロードします。{model}、ライセンス {licence}。", "Downloading: {done} of {total}": "ダウンロード中：{done} / {total}", "Cancel": "キャンセル", "Checking the download": "ダウンロードを確認中", "Starting the model": "モデルを起動中", "On. Reading your notes: {done} of {total} pages. Shared words are used for pages not read yet.": "オン。ノートを読み取り中：{done} / {total} ページ。未読のページには共通の語句を使います。", "On. Related pages and search use meaning. {count} pieces of text are indexed on this device.": "オン。関連ページと検索は意味を使います。この端末で {count} 個の文章を索引しました。", "Remove model": "モデルを削除", "Meaning search stopped. Related pages and search use shared words.": "意味検索が停止しました。関連ページと検索は共通の語句を使います。", "The download failed. Nothing was installed.": "ダウンロードに失敗しました。何もインストールされていません。", "This build has no runtime for meaning search. Related pages and search use shared words.": "このビルドには意味検索の実行部品がありません。関連ページと検索は共通の語句を使います。", "Found by meaning, on this device.": "意味で検索（この端末上）。", "Found by shared words.": "共通の語句で検索。", "Found by shared words. This page has not been read for meaning yet.": "共通の語句で検索。このページはまだ意味を読み取っていません。", "Matches by meaning": "意味で一致", "No exact matches. Search by meaning is off; turn it on in Settings.": "完全な一致はありません。意味検索はオフです。設定でオンにできます。"},
+  es: {"Search by meaning": "Buscar por significado", "Optional. Finds notes and related pages by what they mean, in any language, with a model that runs on this device. Your notes are not sent anywhere.": "Opcional. Encuentra notas y páginas relacionadas por su significado, en cualquier idioma, con un modelo que se ejecuta en este dispositivo. Tus notas no se envían a ningún sitio.", "Off. Related pages and search use shared words.": "Desactivado. Las páginas relacionadas y la búsqueda usan palabras compartidas.", "Download model ({size})": "Descargar modelo ({size})", "Downloaded once from huggingface.co. {model}, licence {licence}.": "Se descarga una vez desde huggingface.co. {model}, licencia {licence}.", "Downloading: {done} of {total}": "Descargando: {done} de {total}", "Cancel": "Cancelar", "Checking the download": "Comprobando la descarga", "Starting the model": "Iniciando el modelo", "On. Reading your notes: {done} of {total} pages. Shared words are used for pages not read yet.": "Activado. Leyendo tus notas: {done} de {total} páginas. Las páginas aún sin leer usan palabras compartidas.", "On. Related pages and search use meaning. {count} pieces of text are indexed on this device.": "Activado. Las páginas relacionadas y la búsqueda usan el significado. {count} fragmentos de texto indexados en este dispositivo.", "Remove model": "Quitar modelo", "Meaning search stopped. Related pages and search use shared words.": "La búsqueda por significado se detuvo. Las páginas relacionadas y la búsqueda usan palabras compartidas.", "The download failed. Nothing was installed.": "La descarga falló. No se instaló nada.", "This build has no runtime for meaning search. Related pages and search use shared words.": "Esta versión no incluye el componente de búsqueda por significado. Las páginas relacionadas y la búsqueda usan palabras compartidas.", "Found by meaning, on this device.": "Encontrado por significado, en este dispositivo.", "Found by shared words.": "Encontrado por palabras compartidas.", "Found by shared words. This page has not been read for meaning yet.": "Encontrado por palabras compartidas. Esta página aún no se ha leído por significado.", "Matches by meaning": "Coincidencias por significado", "No exact matches. Search by meaning is off; turn it on in Settings.": "Sin coincidencias exactas. La búsqueda por significado está desactivada; actívala en Ajustes."},
+  ar: {"Search by meaning": "البحث بالمعنى", "Optional. Finds notes and related pages by what they mean, in any language, with a model that runs on this device. Your notes are not sent anywhere.": "اختياري. يعثر على الملاحظات والصفحات ذات الصلة حسب معناها، بأي لغة، باستخدام نموذج يعمل على هذا الجهاز. لا تُرسل ملاحظاتك إلى أي مكان.", "Off. Related pages and search use shared words.": "متوقف. تستخدم الصفحات ذات الصلة والبحث الكلمات المشتركة.", "Download model ({size})": "تنزيل النموذج ({size})", "Downloaded once from huggingface.co. {model}, licence {licence}.": "يُنزَّل مرة واحدة من huggingface.co. {model}، الترخيص {licence}.", "Downloading: {done} of {total}": "جارٍ التنزيل: {done} من {total}", "Cancel": "إلغاء", "Checking the download": "جارٍ التحقق من التنزيل", "Starting the model": "جارٍ تشغيل النموذج", "On. Reading your notes: {done} of {total} pages. Shared words are used for pages not read yet.": "يعمل. جارٍ قراءة ملاحظاتك: {done} من {total} صفحة. تُستخدم الكلمات المشتركة للصفحات التي لم تُقرأ بعد.", "On. Related pages and search use meaning. {count} pieces of text are indexed on this device.": "يعمل. تستخدم الصفحات ذات الصلة والبحث المعنى. فُهرس {count} مقطعًا نصيًا على هذا الجهاز.", "Remove model": "إزالة النموذج", "Meaning search stopped. Related pages and search use shared words.": "توقف البحث بالمعنى. تستخدم الصفحات ذات الصلة والبحث الكلمات المشتركة.", "The download failed. Nothing was installed.": "فشل التنزيل. لم يُثبَّت أي شيء.", "This build has no runtime for meaning search. Related pages and search use shared words.": "لا يتضمن هذا الإصدار مكوّن البحث بالمعنى. تستخدم الصفحات ذات الصلة والبحث الكلمات المشتركة.", "Found by meaning, on this device.": "عُثر عليها بالمعنى، على هذا الجهاز.", "Found by shared words.": "عُثر عليها بالكلمات المشتركة.", "Found by shared words. This page has not been read for meaning yet.": "عُثر عليها بالكلمات المشتركة. لم تُقرأ هذه الصفحة بالمعنى بعد.", "Matches by meaning": "نتائج بالمعنى", "No exact matches. Search by meaning is off; turn it on in Settings.": "لا توجد نتائج مطابقة. البحث بالمعنى متوقف؛ فعّله من الإعدادات."},
+  hi: {"Search by meaning": "अर्थ से खोजें", "Optional. Finds notes and related pages by what they mean, in any language, with a model that runs on this device. Your notes are not sent anywhere.": "वैकल्पिक। इस डिवाइस पर चलने वाले मॉडल से किसी भी भाषा में अर्थ के आधार पर नोट और संबंधित पेज ढूँढता है। आपके नोट कहीं नहीं भेजे जाते।", "Off. Related pages and search use shared words.": "बंद। संबंधित पेज और खोज साझा शब्दों का उपयोग करते हैं।", "Download model ({size})": "मॉडल डाउनलोड करें ({size})", "Downloaded once from huggingface.co. {model}, licence {licence}.": "huggingface.co से एक बार डाउनलोड होता है। {model}, लाइसेंस {licence}।", "Downloading: {done} of {total}": "डाउनलोड हो रहा है: {total} में से {done}", "Cancel": "रद्द करें", "Checking the download": "डाउनलोड की जाँच हो रही है", "Starting the model": "मॉडल शुरू हो रहा है", "On. Reading your notes: {done} of {total} pages. Shared words are used for pages not read yet.": "चालू। नोट पढ़े जा रहे हैं: {total} में से {done} पेज। जो पेज अभी नहीं पढ़े गए उनके लिए साझा शब्द उपयोग होते हैं।", "On. Related pages and search use meaning. {count} pieces of text are indexed on this device.": "चालू। संबंधित पेज और खोज अर्थ का उपयोग करते हैं। इस डिवाइस पर पाठ के {count} अंश अनुक्रमित हैं।", "Remove model": "मॉडल हटाएँ", "Meaning search stopped. Related pages and search use shared words.": "अर्थ से खोज रुक गई। संबंधित पेज और खोज साझा शब्दों का उपयोग करते हैं।", "The download failed. Nothing was installed.": "डाउनलोड विफल रहा। कुछ भी इंस्टॉल नहीं हुआ।", "This build has no runtime for meaning search. Related pages and search use shared words.": "इस बिल्ड में अर्थ से खोज का घटक नहीं है। संबंधित पेज और खोज साझा शब्दों का उपयोग करते हैं।", "Found by meaning, on this device.": "अर्थ से मिला, इसी डिवाइस पर।", "Found by shared words.": "साझा शब्दों से मिला।", "Found by shared words. This page has not been read for meaning yet.": "साझा शब्दों से मिला। यह पेज अभी अर्थ के लिए नहीं पढ़ा गया है।", "Matches by meaning": "अर्थ से मिलान", "No exact matches. Search by meaning is off; turn it on in Settings.": "कोई सटीक मिलान नहीं। अर्थ से खोज बंद है; इसे सेटिंग्स में चालू करें।"},
+};
+for (const source of [STRINGS, MEANING_STRINGS]) for (const [lang, table] of Object.entries(source)) if (I18N[lang]) for (const [k, v] of Object.entries(table)) I18N[lang][k] ??= v;
 
 const svgEl = (tag, attrs = {}) => { const n = document.createElementNS(SVG, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
 const num = n => new Intl.NumberFormat(api.lang).format(n);
@@ -358,7 +366,7 @@ function ensureSection(id, title) {
   return api.$(".rpbody", box);
 }
 function paintPanels() {
-  panelTimer = null;
+  if (meaningOn() && api.engine.revision() !== meaning.seenRev) { markAll(); indexLoop(); }
   if (!api.$("#rpDetails") || api.state.view) return;
   const pageId = api.state.cur; if (!pageId) return;
   const related = ensureSection("rpRelated", "Related"), local = ensureSection("rpLocal", "Connections");
@@ -366,16 +374,7 @@ function paintPanels() {
   try { g = currentGraph(); } catch (err) { console.warn("graph", err); related.replaceChildren(api.el("p", { text: api.t("The graph could not be built.") })); local.replaceChildren(); return; }
   const me = "page:" + pageId, around = g.around.get(me) || [];
 
-  related.replaceChildren();
-  const similar = around.filter(x => x.e.kind === "similar").sort((a, b) => b.e.score - a.e.score || (a.id < b.id ? -1 : 1)).slice(0, 5);
-  if (!similar.length) related.append(api.el("p", { text: api.t("Nothing similar yet.") }));
-  for (const x of similar) {
-    const other = g.nodes.get(x.id);
-    related.append(api.el("div", { class: "rel" },
-      api.el("button", { dir: "auto", text: labelOf(other), onclick: () => api.openPage(other.page) }),
-      api.el("span", { text: percent(x.e.score) }),
-      api.el("button", { class: "lk", text: api.t("Link"), "aria-label": fill(api.t("Link to {page}"), { page: labelOf(other) }), onclick: () => addLink(pageId, other) })));
-  }
+  paintRelated(related, pageId, g, around);
 
   local.replaceChildren();
   const near = [...around].sort((a, b) => (a.e.kind === "similar") - (b.e.kind === "similar") || (a.id < b.id ? -1 : 1));
@@ -405,68 +404,391 @@ function paintPanels() {
   }
   local.append(api.el("button", { class: "textlink", text: api.t("Full graph"), onclick: () => { view.selected = me; api.openView("graph"); } }));
 }
+/** Related pages: by meaning when this page has vectors, otherwise by shared words, and it says which. */
+let relatedAsk = 0;
+function relatedRows(box, pageId, rows, caption) {
+  box.replaceChildren();
+  if (!rows.length) box.append(api.el("p", { text: api.t("Nothing similar yet.") }));
+  for (const { other, score } of rows) {
+    box.append(api.el("div", { class: "rel" },
+      api.el("button", { dir: "auto", text: labelOf(other), onclick: () => api.openPage(other.page) }),
+      api.el("span", { text: percent(score) }),
+      api.el("button", { class: "lk", text: api.t("Link"), "aria-label": fill(api.t("Link to {page}"), { page: labelOf(other) }), onclick: () => addLink(pageId, other) })));
+  }
+  box.append(api.el("p", { class: "kgmethod", "data-method": caption.method }, api.el("small", { text: api.t(caption.text) })));
+}
+function paintRelated(box, pageId, g, around) {
+  const ask = ++relatedAsk;
+  const words = around.filter(x => x.e.kind === "similar").sort((a, b) => b.e.score - a.e.score || (a.id < b.id ? -1 : 1)).slice(0, 5).map(x => ({ other: g.nodes.get(x.id), score: x.e.score }));
+  const byWords = text => relatedRows(box, pageId, words, { method: "words", text });
+  if (!meaningOn()) { byWords(meaning.state === "failed" ? "Meaning search stopped. Related pages and search use shared words." : "Found by shared words."); return; }
+  embedder.call("related", { page: pageId, k: 12, threshold: MODEL.relatedThreshold }).then(({ known, near }) => {
+    if (ask !== relatedAsk || !box.isConnected) return;
+    if (!known) { byWords("Found by shared words. This page has not been read for meaning yet."); return; }
+    const rows = near.map(n => ({ other: g.nodes.get("page:" + n.page), score: n.score / 1000 })).filter(r => r.other).slice(0, 5);
+    relatedRows(box, pageId, rows, { method: "meaning", text: "Found by meaning, on this device." });
+  }).catch(err => { stopMeaning(err); if (ask === relatedAsk && box.isConnected) byWords("Meaning search stopped. Related pages and search use shared words."); });
+}
 function addLink(pageId, other) {
   const page = api.pageData(pageId), last = page.blocks[page.blocks.length - 1];
   api.edit({ op: "insert_block", page: pageId, after: last ? last.id : null, block: { id: api.uid(), kind: "paragraph", checked: false, runs: [{ text: labelOf(other), marks: [], link: other.page }] } });
   if (api.state.cur === pageId && !api.state.view) api.renderPage();
   schedulePanels();
 }
-function schedulePanels() { if (!panelTimer) panelTimer = setTimeout(paintPanels, 300); }
+// Deriving the graph reads the whole workspace, so it never runs between keystrokes: typing pushes
+// it back until the person pauses. SPK-02 measured it as the largest single cost near the typing path.
+const TYPING_REST_MS = 1500;
+let lastTyped = -Infinity;
+function schedulePanels() {
+  if (panelTimer) return;
+  const rest = lastTyped + TYPING_REST_MS - performance.now();
+  panelTimer = setTimeout(() => { panelTimer = null; if (performance.now() - lastTyped < TYPING_REST_MS) schedulePanels(); else paintPanels(); }, Math.max(300, rest));
+}
 
-/* ---------- Search: the engine's index behind the existing Ctrl K palette ---------- */
-function paintExcerpt(hit) {
-  const small = api.el("small", { dir: "auto" });
-  if (hit.cut_start) small.append("… ");
-  let at = 0;
-  for (const [a, b] of hit.marks) { if (a > at) small.append(hit.text.slice(at, a)); small.append(api.el("mark", { text: hit.text.slice(a, b) })); at = b; }
-  small.append(hit.text.slice(at));
-  if (hit.cut_end) small.append(" …");
-  return small;
-}
-function openPalette() {
-  api.$(".modalbg")?.remove();
-  const before = document.activeElement;
-  const input = api.el("input", { id: "palette", type: "search", placeholder: api.t("Search"), "aria-label": api.t("Search"), role: "combobox", "aria-expanded": "true", "aria-controls": "paletteList", autocomplete: "off" });
-  const list = api.el("div", { class: "list", id: "paletteList", role: "listbox" });
-  let on = 0, hits = [];
-  const close = () => { api.$(".modalbg")?.remove(); if (before?.isConnected) before.focus?.(); };
-  const go = h => { api.$(".modalbg")?.remove(); api.openPage(h.page); if (h.item) api.$(`.b[data-id="${CSS.escape(h.item)}"]`)?.scrollIntoView({ block: "center" }); };
-  const paint = () => {
-    const q = input.value.trim(), titles = new Map(api.live().map(p => [p.id, p.title]));
-    list.replaceChildren();
-    if (!q) hits = [...titles].slice(0, 40).map(([page, title]) => ({ page, title, item: "", plain: true }));
-    else {
-      try { hits = JSON.parse(api.engine.search(q, 40)); }
-      catch (err) { console.warn("search", err); hits = []; list.append(api.el("div", { class: "hdr", role: "alert", text: api.t("Search failed.") })); return; }
-      hits = hits.filter(h => titles.has(h.page));
-      for (const h of hits) h.title = titles.get(h.page);
-    }
-    on = Math.min(on, Math.max(0, hits.length - 1));
-    input.removeAttribute("aria-activedescendant");
-    hits.forEach((h, i) => {
-      const isTitle = h.field === "title";
-      const gl = h.field === "row" || h.field === "cell" ? "table" : "file-text";
-      const label = api.el("span", { class: "palt", dir: "auto" });
-      if (isTitle) { let at = 0; for (const [a, b] of h.marks) { if (a > at) label.append(h.text.slice(at, a)); label.append(api.el("mark", { text: h.text.slice(a, b) })); at = b; } label.append(h.text.slice(at)); }
-      else label.append(h.title || api.t("Untitled"));
-      const btn = api.el("button", { class: "mi" + (i === on ? " on" : ""), id: "palo" + i, role: "option", "aria-selected": String(i === on), onclick: () => go(h), onmousedown: e => e.preventDefault() },
-        api.el("span", { class: "gl" }, api.icon(gl)), api.el("span", { class: "palb" }, label, !h.plain && !isTitle ? paintExcerpt(h) : null));
-      list.append(btn);
-      if (i === on) { input.setAttribute("aria-activedescendant", btn.id); requestAnimationFrame(() => btn.scrollIntoView?.({ block: "nearest" })); }
-    });
-    if (!hits.length) list.append(api.el("div", { class: "hdr", text: api.t("No matches") }));
-  };
-  input.addEventListener("input", () => { on = 0; paint(); });
-  input.addEventListener("keydown", e => {
-    if (e.isComposing) return;
-    if (e.key === "ArrowDown") { e.preventDefault(); on = Math.min(hits.length - 1, on + 1); paint(); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); on = Math.max(0, on - 1); paint(); }
-    else if (e.key === "Enter" && hits[on]) { e.preventDefault(); go(hits[on]); }
-    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+/* ---------- Meaning search: optional, downloaded on request, never bundled. Docs/60. ---------- */
+// One model, pinned to a revision and a checksum. Its file is never part of the app.
+const HF = "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/e8f8c211226b894fcb81acc59f3b34ba3efd5f42";
+const MODEL = {
+  id: "paraphrase-multilingual-MiniLM-L12-v2", tag: "paraphrase-multilingual-MiniLM-L12-v2@e8f8c21#qint8#1", name: "paraphrase-multilingual-MiniLM-L12-v2", licence: "Apache-2.0",
+  dims: 384, prefix: "none", maxTokens: 128, relatedThreshold: .4, queryThreshold: .3,
+  files: [
+    { key: "model", url: HF + "/onnx/model_qint8_arm64.onnx", sha256: "783fea82d71a58179b830a4dbd2d58447e640609e98eedf9ffa12622d375a672", bytes: 118412398 },
+    { key: "tokenizer", url: HF + "/tokenizer.json", sha256: "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8", bytes: 9081518 },
+  ],
+};
+const MEANING_KEY = "casualnote-meaning", MEANING_DB = "casualnote-meaning";
+const RUNTIME = "../pkg/embed/casual_note_embed.js";
+
+function meaningDb() {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open(MEANING_DB, 1);
+    open.onupgradeneeded = () => { open.result.createObjectStore("models"); open.result.createObjectStore("vectors"); };
+    open.onsuccess = () => resolve(open.result);
+    open.onerror = () => reject(open.error);
   });
-  document.body.append(api.el("div", { class: "modalbg", onpointerdown: e => { if (e.target.classList.contains("modalbg")) close(); } }, api.el("div", { class: "modal", role: "dialog", "aria-label": api.t("Search") }, input, list)));
-  paint(); input.focus();
 }
+const dbDo = async (store, mode, work) => {
+  const db = await meaningDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(store, mode), req = work(tx.objectStore(store));
+      tx.oncomplete = () => resolve(req?.result);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+    });
+  } finally { db.close(); }
+};
+const hex = buffer => [...new Uint8Array(buffer)].map(b => b.toString(16).padStart(2, "0")).join("");
+
+/* The worker half. This same module, started as a worker, holds the model and the vectors, so
+   nothing here can touch the typing path. Between two pieces of text it yields, so a query waits
+   for at most one. */
+function workerMain() {
+  let runtime = null, model = null, store = null, spec = null, abort = null;
+  const tick = () => new Promise(r => setTimeout(r));
+  const handlers = {
+    async install({ spec: wanted }, progress) {
+      abort = new AbortController();
+      const total = wanted.files.reduce((s, f) => s + f.bytes, 0);
+      let done = 0;
+      const got = [];
+      for (const f of wanted.files) {
+        const res = await fetch(f.url, { signal: abort.signal, credentials: "omit", referrerPolicy: "no-referrer" });
+        if (!res.ok) throw new Error("CN-EMB-0006: HTTP " + res.status);
+        const parts = [];
+        const reader = res.body.getReader();
+        for (;;) {
+          const { done: end, value } = await reader.read();
+          if (end) break;
+          parts.push(value); done += value.length;
+          progress({ phase: "downloading", done, total });
+        }
+        got.push([f, new Blob(parts)]);
+      }
+      progress({ phase: "verifying" });
+      for (const [f, blob] of got) {
+        const sum = hex(await crypto.subtle.digest("SHA-256", await blob.arrayBuffer()));
+        if (sum !== f.sha256) throw new Error("CN-EMB-0006: the download did not match its checksum");
+      }
+      await dbDo("models", "readwrite", s => { for (const [f, blob] of got) s.put(blob, wanted.id + ":" + f.key); });
+      return { ok: true };
+    },
+    cancel() { abort?.abort(); return { ok: true }; },
+    async start({ spec: wanted }) {
+      spec = wanted;
+      const [m, t] = [await dbDo("models", "readonly", s => s.get(spec.id + ":model")), await dbDo("models", "readonly", s => s.get(spec.id + ":tokenizer"))];
+      if (!m || !t) throw new Error("CN-EMB-0001: the model is not installed");
+      runtime = await import(RUNTIME);
+      await runtime.default();
+      model = new runtime.Model(new Uint8Array(await m.arrayBuffer()), new Uint8Array(await t.arrayBuffer()), spec.dims, spec.prefix, spec.maxTokens);
+      const saved = await dbDo("vectors", "readonly", s => s.get(spec.tag));
+      if (saved) { try { store = runtime.Store.load(spec.tag, spec.dims, new Uint8Array(saved)); } catch (err) { console.warn("vectors rebuilt", err); } }
+      store ??= new runtime.Store(spec.tag, spec.dims);
+      return { count: store.len(), pages: JSON.parse(store.page_ids()) };
+    },
+    async plan({ page, chunks }) {
+      const todo = JSON.parse(store.plan(page, chunks));
+      for (const chunk of todo) {
+        await tick();
+        store.submit(page, JSON.stringify({ key: chunk.key, hash: chunk.hash, weight: chunk.weight }), model.embed(chunk.input, false));
+      }
+      return { embedded: todo.length, count: store.len() };
+    },
+    remove({ page }) { store.remove_page(page); return { count: store.len() }; },
+    pages() { return { pages: JSON.parse(store.page_ids()) }; },
+    query({ text, k }) { return { near: JSON.parse(store.nearest(model.embed(text, true), k)) }; },
+    related({ page, k, threshold }) {
+      return { known: JSON.parse(store.page_ids()).includes(page), near: JSON.parse(store.related(page, k, threshold)) };
+    },
+    async save() { const bytes = store.dump(); await dbDo("vectors", "readwrite", s => s.put(bytes.buffer, spec.tag)); return { count: store.len() }; },
+    async uninstall({ spec: wanted }) {
+      await dbDo("models", "readwrite", s => { for (const f of wanted.files) s.delete(wanted.id + ":" + f.key); });
+      await dbDo("vectors", "readwrite", s => s.delete(wanted.tag));
+      return { ok: true };
+    },
+  };
+  self.onmessage = async ({ data: { id, type, payload } }) => {
+    try {
+      const value = await handlers[type](payload ?? {}, progress => self.postMessage({ id, progress }));
+      self.postMessage({ id, value });
+    } catch (err) { self.postMessage({ id, error: String(err?.message || err) }); }
+  };
+}
+
+/* The seam. Anything with `call(type, payload, onProgress)` and `close()` will do: this worker, a
+   desktop shell's process, or a test's stand-in. */
+function workerEmbedder() {
+  const worker = new Worker(import.meta.url, { type: "module" });
+  let next = 0;
+  const waiting = new Map();
+  worker.onmessage = ({ data }) => {
+    const w = waiting.get(data.id); if (!w) return;
+    if (data.progress) { w.progress?.(data.progress); return; }
+    waiting.delete(data.id);
+    if (data.error) w.reject(new Error(data.error)); else w.resolve(data.value);
+  };
+  worker.onerror = e => { for (const w of waiting.values()) w.reject(new Error("CN-EMB-0006: " + (e.message || "the worker stopped"))); waiting.clear(); };
+  return {
+    call(type, payload, progress) { return new Promise((resolve, reject) => { const id = ++next; waiting.set(id, { resolve, reject, progress }); worker.postMessage({ id, type, payload }); }); },
+    close() { worker.terminate(); },
+  };
+}
+let embedder = null, pauseAfterEdit = 30000, pauseInBuild = 2000;
+const meaning = { state: "off", done: 0, total: 0, count: 0, error: null, dirty: new Set(), running: false, lastEdit: 0, seenRev: -1, building: false, section: null };
+const meaningOn = () => meaning.state === "ready" || meaning.state === "indexing";
+const remembered = () => { try { return localStorage.getItem(MEANING_KEY); } catch { return null; } };
+const remember = value => { try { if (value) localStorage.setItem(MEANING_KEY, value); else localStorage.removeItem(MEANING_KEY); } catch { /* optional */ } };
+const size = bytes => new Intl.NumberFormat(api.lang, { style: "unit", unit: "megabyte", maximumFractionDigits: 0 }).format(bytes / 1e6);
+function setMeaning(state, extra = {}) {
+  Object.assign(meaning, { state, ...extra });
+  document.documentElement.dataset.meaning = state;
+  paintMeaning();
+}
+function stopMeaning(err) {
+  console.warn("meaning search stopped", err);
+  embedder?.close?.(); embedder = null;
+  meaning.dirty.clear();
+  setMeaning("failed", { error: String(err?.message || err).slice(0, 200) });
+  schedulePanels();
+}
+function meaningHits(near) {
+  const out = [];
+  for (const n of near) {
+    if (n.score < MODEL.queryThreshold * 1e6) continue;
+    const item = n.key.split("#")[0];
+    let text = "";
+    try { text = api.pageData(n.page).blocks.find(b => b.id === item)?.runs.map(r => r.text).join("") ?? ""; } catch { continue; }
+    out.push({ page: n.page, item, text: clip(text, 120), meaning: true, score: n.score });
+  }
+  return out;
+}
+const idle = () => new Promise(r => ("requestIdleCallback" in self ? requestIdleCallback(r, { timeout: 1000 }) : setTimeout(r, 50)));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function markAll() { for (const p of api.pages()) meaning.dirty.add(p.id); meaning.seenRev = api.engine.revision(); }
+/** Reads pages one at a time, only when nobody is typing. All of it is off the typing path except
+    `embed_chunks`, one page's read, which waits for an idle moment. */
+async function indexLoop() {
+  if (meaning.running || !embedder) return;
+  meaning.running = true;
+  try {
+    let sinceSave = 0;
+    while (embedder && meaning.dirty.size) {
+      const pause = meaning.building ? pauseInBuild : pauseAfterEdit;
+      const quiet = performance.now() - meaning.lastEdit;
+      if (quiet < pause) { await sleep(Math.min(pause - quiet, 1000)); continue; }
+      await idle();
+      if (!embedder) break; // It stopped while this waited.
+      const id = meaning.dirty.values().next().value;
+      meaning.dirty.delete(id);
+      const meta = api.metaOf(id);
+      const answer = meta && !meta.trashed ? await embedder.call("plan", { page: id, chunks: api.engine.embed_chunks(id) }) : await embedder.call("remove", { page: id });
+      meaning.count = answer.count; sinceSave += answer.embedded ?? 1;
+      meaning.done = meaning.total - meaning.dirty.size;
+      if (meaning.building) paintMeaning();
+      if (sinceSave >= 200) { await embedder.call("save"); sinceSave = 0; }
+    }
+    if (embedder) {
+      if (sinceSave) await embedder.call("save");
+      if (meaning.state !== "ready") { meaning.building = false; setMeaning("ready"); schedulePanels(); }
+      else paintMeaning();
+    }
+  } catch (err) { stopMeaning(err); }
+  meaning.running = false;
+}
+async function startMeaning() {
+  try {
+    setMeaning("loading");
+    embedder ??= globalThis.casualNoteHost?.embedder ?? workerEmbedder();
+    const { count, pages } = await embedder.call("start", { spec: MODEL });
+    for (const id of pages) meaning.dirty.add(id);
+    markAll();
+    meaning.building = true;
+    setMeaning("indexing", { count, done: 0, total: meaning.dirty.size, error: null });
+    remember(MODEL.id);
+    schedulePanels();
+    indexLoop();
+  } catch (err) { stopMeaning(err); }
+}
+async function installMeaning() {
+  try {
+    setMeaning("downloading", { done: 0, total: MODEL.files.reduce((s, f) => s + f.bytes, 0), error: null });
+    if (!embedder && !globalThis.casualNoteHost?.embedder) {
+      const here = await fetch(new URL(RUNTIME, import.meta.url), { method: "HEAD" }).catch(() => null);
+      if (!here?.ok || !crypto?.subtle) { setMeaning("unavailable"); return; }
+    }
+    embedder ??= globalThis.casualNoteHost?.embedder ?? workerEmbedder();
+    await embedder.call("install", { spec: MODEL }, p => {
+      if (p.phase === "verifying") setMeaning("verifying");
+      else setMeaning("downloading", { done: p.done, total: p.total });
+    });
+    await startMeaning();
+  } catch (err) {
+    embedder?.close?.(); embedder = null;
+    if (err?.name === "AbortError" || /abort/i.test(String(err))) { setMeaning("off"); return; }
+    console.warn("model download", err);
+    setMeaning("downloadfailed", { error: String(err?.message || err).slice(0, 200) });
+  }
+}
+async function removeMeaning() {
+  const host = embedder ?? (globalThis.casualNoteHost?.embedder ?? workerEmbedder());
+  try { await host.call("uninstall", { spec: MODEL }); } catch (err) { console.warn("model removal", err); }
+  host.close?.(); embedder = null;
+  remember(null); meaning.dirty.clear();
+  setMeaning("off", { count: 0, error: null });
+  schedulePanels();
+}
+function paintMeaning() {
+  const sec = meaning.section; if (!sec) return;
+  const { status, bar, actions, detail } = sec._parts;
+  const m = meaning, btn = (text, id, onclick, cls = "btn") => api.el("button", { class: cls, id, text: api.t(text), onclick });
+  sec.dataset.state = m.state;
+  actions.replaceChildren(); detail.textContent = ""; bar.hidden = true;
+  const fileNote = fill(api.t("Downloaded once from huggingface.co. {model}, licence {licence}."), { model: MODEL.name, licence: MODEL.licence });
+  const total = MODEL.files.reduce((s, f) => s + f.bytes, 0);
+  const download = () => api.el("button", { class: "btn primary", id: "meaningGet", text: fill(api.t("Download model ({size})"), { size: size(total) }), onclick: () => installMeaning() });
+  status.classList.toggle("bad", ["failed", "downloadfailed", "unavailable"].includes(m.state));
+  if (m.state === "off") { status.textContent = api.t("Off. Related pages and search use shared words."); actions.append(download()); detail.textContent = fileNote; }
+  else if (m.state === "downloading") {
+    status.textContent = fill(api.t("Downloading: {done} of {total}"), { done: size(m.done), total: size(m.total) });
+    bar.hidden = false; bar.max = m.total || 1; bar.value = m.done;
+    actions.append(btn("Cancel", "meaningCancel", () => embedder?.call("cancel")));
+    detail.textContent = fileNote;
+  }
+  else if (m.state === "verifying") status.textContent = api.t("Checking the download");
+  else if (m.state === "loading") status.textContent = api.t("Starting the model");
+  else if (m.state === "indexing") {
+    status.textContent = fill(api.t("On. Reading your notes: {done} of {total} pages. Shared words are used for pages not read yet."), { done: num(m.done), total: num(m.total) });
+    bar.hidden = false; bar.max = m.total || 1; bar.value = m.done;
+    actions.append(btn("Remove model", "meaningRemove", removeMeaning));
+    detail.textContent = fileNote;
+  }
+  else if (m.state === "ready") {
+    status.textContent = fill(api.t("On. Related pages and search use meaning. {count} pieces of text are indexed on this device."), { count: num(m.count) });
+    actions.append(btn("Remove model", "meaningRemove", removeMeaning));
+    detail.textContent = fileNote;
+  }
+  else if (m.state === "failed") {
+    status.textContent = api.t("Meaning search stopped. Related pages and search use shared words.");
+    actions.append(btn("Try again", "meaningRetry", startMeaning), btn("Remove model", "meaningRemove", removeMeaning));
+    detail.textContent = m.error || "";
+  }
+  else if (m.state === "downloadfailed") {
+    status.textContent = api.t("The download failed. Nothing was installed.");
+    actions.append(api.el("button", { class: "btn primary", id: "meaningGet", text: api.t("Try again"), onclick: () => installMeaning() }));
+    detail.textContent = m.error || "";
+  }
+  else if (m.state === "unavailable") status.textContent = api.t("This build has no runtime for meaning search. Related pages and search use shared words.");
+}
+function meaningSection(box) {
+  const status = api.el("p", { class: "asst-status", id: "meaningStatus", role: "status" });
+  const bar = api.el("progress", { id: "meaningBar", hidden: true });
+  const actions = api.el("div", { class: "row2", id: "meaningActions" });
+  const detail = api.el("small", { class: "asst-hint", id: "meaningDetail", dir: "auto" });
+  const sec = api.el("div", { id: "meaningSet" }, api.el("h2", { text: api.t("Search by meaning") }),
+    api.el("p", { text: api.t("Optional. Finds notes and related pages by what they mean, in any language, with a model that runs on this device. Your notes are not sent anywhere.") }), status, bar, actions, detail);
+  sec._parts = { status, bar, actions, detail };
+  meaning.section = sec;
+  box.append(sec);
+  paintMeaning();
+}
+function meaningChanged(op) {
+  if (!meaningOn()) return;
+  const page = op.page ?? (["create_page", "set_title", "set_trashed", "move_page"].includes(op.op) ? op.id : null);
+  if (page) meaning.dirty.add(page);
+  meaning.lastEdit = performance.now();
+  meaning.seenRev = api.engine.revision();
+  indexLoop();
+}
+/* The palette is app.js's, and it repaints on each input. Exact matches stay first and apart, so a
+   person can always tell whether their words are in the note. This adds a labelled group after them. */
+let paletteTimer = null, paletteAsk = 0;
+function closePalette(input) { input.closest(".modalbg")?.remove(); }
+function meaningRows(input, list, near) {
+  const titles = new Map(api.live().map(p => [p.id, p.title]));
+  const exact = new Set(api.$$(".mi", list).map(n => n.textContent));
+  const rows = meaningHits(near).filter(h => titles.has(h.page));
+  if (!rows.length) return;
+  const none = api.$(".hdr.none", list), create = api.$(".mirow", list);
+  none?.remove();
+  const anchor = create || null;
+  list.insertBefore(api.el("div", { class: "hdr", id: "paletteMeaning", role: "presentation", text: api.t("Matches by meaning") }), anchor);
+  rows.forEach((h, i) => {
+    const row = api.el("button", { class: "mi", role: "option", id: "palm" + i, tabindex: "-1", "data-meaning": "", "aria-selected": "false", onmousedown: e => e.preventDefault(), onclick: () => {
+      closePalette(input); api.openPage(h.page);
+      if (h.item) api.$(`.b[data-id="${CSS.escape(h.item)}"]`)?.scrollIntoView({ block: "center" });
+    } }, api.el("span", { class: "gl" }, api.icon("file-text")), api.el("span", { class: "palb" }, api.el("span", { class: "nm palt", dir: "auto", text: titles.get(h.page) || api.t("Untitled") }), api.el("small", { dir: "auto", text: h.text })));
+    if (exact.has(row.textContent)) return;
+    list.insertBefore(row, anchor);
+  });
+  // With no exact match the app's selection is on its "create" row. The first match is the better default.
+  if (create?.classList.contains("on")) {
+    create.classList.remove("on"); create.setAttribute("aria-selected", "false");
+    const first = api.$("#palm0", list);
+    if (first) { first.classList.add("on"); first.setAttribute("aria-selected", "true"); input.setAttribute("aria-activedescendant", first.id); }
+  }
+}
+function meaningInPalette(input) {
+  clearTimeout(paletteTimer);
+  const ask = ++paletteAsk, q = input.value.trim(), list = api.$("#paletteList");
+  if (!list || !q) return;
+  if (meaning.state === "off") {
+    if (api.$(".hdr.none", list)) list.append(api.el("div", { class: "hdr", id: "paletteHint", role: "presentation", text: api.t("No exact matches. Search by meaning is off; turn it on in Settings.") }));
+    return;
+  }
+  if (!meaningOn() || q.length < 2) return;
+  paletteTimer = setTimeout(async () => {
+    let near;
+    try { near = (await embedder.call("query", { text: q, k: 10 })).near; } catch (err) { stopMeaning(err); return; }
+    if (ask === paletteAsk && input.isConnected && input.value.trim() === q) meaningRows(input, list, near);
+  }, 160);
+}
+/** For tests and a desktop shell: put an embedder behind the seam. */
+export const meaningSeam = {
+  async use(host, { afterEdit = 30000, inBuild = 2000 } = {}) { embedder = host; pauseAfterEdit = afterEdit; pauseInBuild = inBuild; await startMeaning(); },
+  state: () => ({ ...meaning, dirty: meaning.dirty.size, section: undefined }),
+  clear() { embedder = null; meaning.dirty.clear(); setMeaning("off", { count: 0, error: null }); pauseAfterEdit = 30000; pauseInBuild = 2000; remember(null); },
+  settled: async () => { while (meaning.running || meaning.dirty.size) await sleep(10); },
+  spec: MODEL,
+};
 
 export function install(a) {
   api = a;
@@ -474,11 +796,17 @@ export function install(a) {
   ext.views.graph = { label: "Knowledge graph", render: content => renderGraph(content) };
   ext.nav.push({ id: "graphBtn", icon: "graph", label: "Knowledge graph", run: () => api.openView("graph") });
   ext.panels.push(schedulePanels);
-  // app.js opens its own linear search on these. The capture phase reaches them first.
+  ext.settings.push(meaningSection);
+  ext.onChange.push(meaningChanged);
+  ext.onChange.push(op => { if (op.op === "splice_text" && (op.insert?.length ?? 0) <= 8 && op.page === api.state.cur && api.$(".blocks .t:focus")) lastTyped = performance.now(); });
+  // Nothing about meaning search runs, loads or connects unless it was installed here before.
+  if (remembered() === MODEL.id) setTimeout(startMeaning, 1500);
+  document.addEventListener("input", e => { if (e.target.id === "palette") meaningInPalette(e.target); });
   document.addEventListener("keydown", e => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopPropagation(); openPalette(); }
-  }, true);
-  document.addEventListener("click", e => {
-    if (e.target.closest?.("#searchBtn")) { e.stopPropagation(); openPalette(); }
+    if (e.target.id !== "palette" || e.key !== "Enter" || e.isComposing) return;
+    const row = api.$("#paletteList .mi.on[data-meaning]");
+    if (row) { e.preventDefault(); e.stopPropagation(); row.click(); }
   }, true);
 }
+
+if (IN_WORKER) workerMain();

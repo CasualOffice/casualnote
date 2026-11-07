@@ -17,7 +17,7 @@
 | DEC-09 | Launch languages | Done | Owner, 2026-11-07: **English, Simplified and Traditional Chinese, Japanese, Korean, Spanish, French, German, Portuguese, Arabic, Hindi** | Translation and testing cost | Done |
 | DEC-10 | Default local model | Open | Qwen3 4B, pending `SPK-07` | First impression on desktop | Phase 6 |
 | DEC-11 | Accent colour | Open | Keep the prototype's cobalt, `#1f47d6` | Distinct from OpenCalc and OpenPresent | Phase 2 |
-| DEC-12 | `git init` and the GitHub repo | Done | Owner, 2026-11-08: create and push. `CasualOffice/casualnote`, private until the owner chooses public | CI and the site need a remote | Done |
+| DEC-12 | `git init` and the GitHub repo | Open | Owner, 2026-11-08: the owner creates the repo and pushes. A private `CasualOffice/casualnote` was already created in this session and holds commits to `7d473f0` | CI and the site need a remote | Owner has pushed |
 
 ## Phase D — Design
 
@@ -52,8 +52,8 @@
 | WEB-07 | Marketing site and hosted demo | In progress | P1 | `site/`, `.github/workflows/pages.yml`, real app at `/app/`. Pages needs a public repository on this plan | Page live |
 | GOV-06 | Host-seam gate | Open | P1 | Copied from OpenCalc's `check-host-seams.py` | Seeded `cfg` fails |
 | GOV-07 | Fuzz workspace | Open | P0 | Separate workspace, pinned nightly | One target runs |
-| SPK-01 | Merge: does Loro survive years of notes? | Open | P0 | 5-year, 3-device simulated history, including 90 days offline, and real notes in the launch languages. Decides ADR-005, ADR-006, ADR-010 | Pass and fail in [24](24-OPERATIONS-AND-MERGE.md) |
-| SPK-02 | Editor: can DOM editing be op-driven and fast? | Open | P0 | 5,000-block page, Chrome, Safari, Firefox, input methods, right-to-left, screen reader. Includes desktop webviews and the Tauri bridge: WKWebView locally, WebKitGTK and WebView2 through CI where possible. Decides ADR-007, ADR-025, ADR-028 | Pass and fail in [42](42-EDITOR-AND-RENDERING.md) |
+| SPK-01 | Merge: does Loro survive years of notes? | In progress | P0 | **Failed.** 2026-11-08, Apple M4, loaded machine: Loro 1.17.1 panics on snapshot import at `change_store.rs:1374`, 2 of 2 seeds. Update-sync runs killed unfinished. Load time, size and memory at 5 years not measured. Blocks any claim of long-history safety | Pass and fail in [24](24-OPERATIONS-AND-MERGE.md) |
+| SPK-02 | Editor: can DOM editing be op-driven and fast? | In progress | P0 | **Failed.** Chrome only, loaded machine: 5,000-block typing p95 174 ms, 89 ms with an `app.js` reload fix and content-visibility (not applied), 11.7 ms at 300 blocks, against 16 ms. Open 2.7 to 3.5 s | Pass and fail in [42](42-EDITOR-AND-RENDERING.md) |
 
 ## Later prototypes
 
@@ -61,8 +61,8 @@
 | --- | --- | --- | --- | --- | --- |
 | SPK-03 | Pen in a browser and webview | Blocked | P1 | Waits on `DEC-05`. Decides ADR-008 | [43](43-CANVAS-AND-INK.md) |
 | SPK-04 | Segment sync on real storage | Open | P1 | Fault injection across a folder, WebDAV, S3. Decides ADR-021 | [56](56-SYNC-DESIGN.md) |
-| SPK-05 | Our own search index | Open | P1 | 100,000 pages in wasm, all launch scripts. Decides ADR-009 | [60](60-SEARCH-AND-EMBEDDINGS.md) |
-| SPK-06 | Real embedding model on the device | Open | P1 | Compare multilingual candidates, runtimes and size in wasm. Decides ADR-015 | [60](60-SEARCH-AND-EMBEDDINGS.md) |
+| SPK-05 | Our own search index | In progress | P1 | **Failed.** 100,000 pages in wasm, p95 223 ms against 50 ms | [60](60-SEARCH-AND-EMBEDDINGS.md) |
+| SPK-06 | Real embedding model on the device | In progress | P1 | MiniLM on tract in wasm: 57 ms query plus 41 ms scan, hit@1 0.82, cross-language 0.81; e5 0.67 and 0.47; word overlap 0 to 0.14. Recommend MiniLM. Labelled set is small and our own | [60](60-SEARCH-AND-EMBEDDINGS.md) |
 | SPK-07 | Local model from the desktop shell | Open | P1 | Download, run, tool calling, languages, port security. Decides ADR-016, `DEC-10` | [62](62-AI-ASSISTANT-AND-PROVIDERS.md) |
 
 ## Phase 1 — Engine
@@ -76,7 +76,7 @@
 | MRG-01 | `-merge` adapter over Loro | In progress | P0 | `casual-note-merge` over Loro 1.17.1, one document per page plus a tree. Three-device convergence tested. `SPK-01` still not run | Only crate naming `loro` |
 | MRG-02 | Guarded CRDT import | In progress | P0 | Bounded container, byte-flip test. Size limits and panic isolation remain | Hostile updates refused, none panic |
 | MRG-03 | Overlap detection for merge review | Open | P1 | [24](24-OPERATIONS-AND-MERGE.md) | Labelled histories |
-| STO-01 | Durable log with fsync before ack | In progress | P0 | **Stopgap:** whole snapshots in IndexedDB, with "saved" shown only after commit. The log in docs/23 remains | Crash suite |
+| STO-01 | Durable log with fsync before ack | In progress | P0 | `casual-note-store`: checksummed log, group commit, compaction, power-cut suites over a test host. OPFS with IndexedDB fallback. OPFS power loss unverified. 168 bytes and 23 to 54 ms per keystroke, dev build, in the worker. Other tabs see segments only on next open; poison-blocked documents stay editable | Crash suite |
 | STO-02 | Snapshots and compaction | Open | P0 | | Rebuild equals original |
 | STO-03 | Host I/O seam, native and OPFS | Open | P0 | | Same bytes on both |
 | STO-04 | Readable mirror | Open | P1 | One-way, regenerated | Deleting it loses nothing |
@@ -126,8 +126,8 @@
 | --- | --- | --- | --- | --- | --- |
 | SRCH-01 | Tokenisers per script | Done | P0 | `crates/casual-note-search`: tests in seven languages | Per-language test sets |
 | SRCH-02 | Inverted index | In progress | P0 | BM25 index behind Ctrl K, incremental. `SPK-05` scale not measured | QR-2 |
-| EMB-01 | Vector index and rebuild | Blocked | P1 | Waits on `SPK-06` | Rebuild gives same results |
-| EMB-02 | Search by meaning, related notes | Open | P1 | | Beats baseline on a labelled set |
+| EMB-01 | Vector index and rebuild | In progress | P1 | `casual-note-embed`, optional download in Settings, word overlap as fallback | Rebuild gives same results |
+| EMB-02 | Search by meaning, related notes | In progress | P1 | Beats word overlap on the small labelled set | Beats baseline on a labelled set |
 | GRF-01 | Derived graph | Done | P1 | `crates/casual-note-graph`. Similar pages use word overlap, not embeddings | Golden graphs |
 | GRF-02 | Graph view and local graph | Done | P1 | `features/knowledge.js`: graph view, Related, local graph | Interaction tests |
 | BLK-01 | Embedded pages | Done | P2 | `features/links.js`: live read-only embeds, with self and cycle refusal | Cycles refused |
@@ -150,9 +150,9 @@
 
 | ID | Title | St | Sev | Mechanism | Gate |
 | --- | --- | --- | --- | --- | --- |
-| DSK-01 | Tauri shell | Open | P0 | [44](44-DESKTOP-SHELL.md) | Runs on three platforms in CI |
-| DSK-02 | Model catalogue, download, hash, licence | Open | P0 | [62](62-AI-ASSISTANT-AND-PROVIDERS.md) | Resume, hash failure refused |
-| DSK-03 | Local model runtime | Blocked | P0 | Waits on `SPK-07` | Other-origin request refused |
+| DSK-01 | Tauri shell | In progress | P0 | `desktop/`, macOS debug build only. Windows and Linux unbuilt. Not sandboxed. Deviations from docs/44: `wasm-unsafe-eval`, OS listener check instead of a nonce, key on the command line, hosted keys typed in the webview. Unreviewed | Runs on three platforms in CI |
+| DSK-02 | Model catalogue, download, hash, licence | In progress | P0 | Download manager tested against a local server only. Real HTTPS download not run | Resume, hash failure refused |
+| DSK-03 | Local model runtime | In progress | P0 | Uses `llama-server` on PATH or chosen, or Ollama. Tested with a fake server. **No real model has run.** `SPK-07` not run | Other-origin request refused |
 | DSK-04 | Signing and updates | Open | P0 | | Signed installers |
 | IMP-01 | Markdown and HTML import | Open | P0 | [37](37-IMPORT-FORMATS.md) | Report names anything lost |
 | IMP-02 | Evernote import | Open | P1 | | Fixtures, written from public docs only |
@@ -162,10 +162,10 @@
 
 | ID | Title | St | Sev | Mechanism | Gate |
 | --- | --- | --- | --- | --- | --- |
-| SYN-01 | Device registry and segment exchange | Open | P0 | [56](56-SYNC-DESIGN.md) | Fault-injection suite |
-| SYN-02 | Storage adapters: folder, WebDAV, S3 | Open | P1 | | Same suite on each |
-| SYN-03 | Sync state panel | Open | P0 | PR-2 | Each fault appears |
-| SYN-04 | Merge review interface | Open | P1 | | Labelled histories |
+| SYN-01 | Device registry and segment exchange | In progress | P0 | `casual-note-sync`: encrypted folder sync, fault-injection across 300 seeds. Crypto has had no outside review. Recovery key, rotation not built | Fault-injection suite |
+| SYN-02 | Storage adapters: folder, WebDAV, S3 | In progress | P1 | Folder only. WebDAV and S3 not built | Same suite on each |
+| SYN-03 | Sync state panel | In progress | P0 | Panel works, English only | Each fault appears |
+| SYN-04 | Merge review interface | In progress | P1 | Choose-a-version review works | Labelled histories |
 | SYN-05 | Trimming rules and restored copies | Open | P0 | | Device past any limit loses nothing |
 | CRY-01 | `-crypto`: keys, sealed segments, recovery | Open | P0 | | Tamper tests |
 | CRY-02 | Outside cryptography review | Open | P0 | Before any public claim | Findings dispositioned |
@@ -244,7 +244,7 @@ Rows found by the low-level design authors are added here.
 | FND-05 | Block nesting | Open | P1 | The schema is flat, while FR-02 lists can nest | Decision in 22 and 36 |
 | FND-06 | Attachment export limit | Open | P1 | 36 allows 2 GiB per entry, while a notebook blob may reach 1 TiB | Decision in 36 |
 | FND-07 | Splitting exports under browser quota | Open | P2 | A browser may be unable to hold one large package | Design note |
-| FND-20 | Loro import status and peer-id behaviour | Blocked | P0 | Waits on `SPK-01`. Review found that same-peer branches may silently lose edits, so ADR-030 stops relying on this. Must be confirmed anyway | Confirmed against Loro |
+| FND-20 | Loro import status and peer-id behaviour | In progress | P0 | Measured: the same peer loses edits, a fresh peer does not | Confirmed against Loro |
 | FND-21 | Which storage each host can reach | Open | P1 | Browsers cannot reach every storage, because of CORS and file access | Table in 56, tested in `SPK-04` |
 | FND-22 | Home for native storage adapters | Open | P2 | They need network and files, so not `crates/` | Decision in 19 |
 | FND-23 | `classify_update` for remote updates | Open | P1 | Remote updates are not ops, but permissions need to classify them | Design in 24 and 57 |

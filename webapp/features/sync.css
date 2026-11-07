@@ -1,0 +1,33 @@
+.syncsec { display: flex; flex-direction: column; gap: 8px; }
+.syncnote { color: var(--muted); font-size: .8125rem; margin: 0; }
+.syncstate { display: flex; gap: 7px; align-items: flex-start; margin: 0; }
+.syncstate .i { flex: none; margin-block-start: 3px; color: var(--muted); }
+.syncstate.bad, .syncstate.bad .i { color: var(--ink-red); }
+.syncstate span { min-width: 0; overflow-wrap: anywhere; }
+.syncactions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.syncactions .btn { display: inline-flex; gap: 7px; align-items: center; padding: 5px 11px; }
+.syncfield { display: flex; flex-direction: column; gap: 3px; max-inline-size: 420px; font-size: .8125rem; color: var(--muted); }
+.syncfield input { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 5px 8px; }
+.syncerror { color: var(--ink-red); margin: 0; font-size: .8125rem; overflow-wrap: anywhere; }
+.syncdevices { border-block-start: 1px solid var(--line); }
+.syncdevice { border-block-end: 1px solid var(--line); padding-block: 8px; display: flex; flex-direction: column; gap: 3px; }
+.syncdevice header { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; flex-wrap: wrap; }
+.syncdevice b { font-weight: 500; overflow-wrap: anywhere; }
+.syncdevice small { color: var(--faint); font-size: .75rem; }
+.syncfacts { margin: 0; padding: 0; list-style: none; font-size: .8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.syncfacts .bad { color: var(--ink-red); }
+.syncfacts code { color: var(--faint); font: 400 .75rem/1.5 var(--mono); overflow-wrap: anywhere; }
+.syncreviews { display: flex; flex-direction: column; gap: 12px; }
+.syncreview { border-block-end: 1px solid var(--line); padding-block-end: 12px; display: flex; flex-direction: column; gap: 6px; }
+.syncversions { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.syncversion { background: var(--tint); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.syncversion h5 { margin: 0; font-size: .75rem; font-weight: 400; color: var(--muted); overflow-wrap: anywhere; }
+.syncversion p { margin: 0; flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.syncversion p.none { color: var(--faint); }
+.syncversion .btn { align-self: flex-start; padding: 3px 9px; }
+.b.syncmarked .t { text-decoration: underline dotted var(--faint); text-underline-offset: 3px; }
+#rpSync button { display: block; inline-size: 100%; text-align: start; padding: 3px 4px; border-radius: var(--radius); overflow-wrap: anywhere; font-size: .8125rem; }
+#rpSync button:hover { background: var(--hover); }
+@media (max-width: 760px) {
+  .syncactions .btn, .syncversion .btn { min-height: 36px; }
+}

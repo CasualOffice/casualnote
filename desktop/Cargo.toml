@@ -1,0 +1,63 @@
+# Its own workspace: Tauri's dependency tree would otherwise weigh on every engine build (docs/44).
+[workspace]
+
+[package]
+name = "casual-note-desktop"
+version = "0.1.0"
+publish = false
+edition = "2024"
+rust-version = "1.88.0"
+license = "Apache-2.0"
+
+[lib]
+name = "casual_note_desktop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "casualnote-desktop"
+path = "src/main.rs"
+
+[dependencies]
+tauri = { version = "2" }
+# Rust calls this; no JavaScript does, so none of its permissions are granted.
+tauri-plugin-dialog = { version = "2" }
+# Called directly for the native confirmation, because the plugin turns "no answer" into the second
+# button's label, which would read as Allow when Decline has to come first. See src/confirm.rs.
+rfd = { version = "0.16", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Already in Tauri's tree. No redirects are followed automatically: each hop is checked by us.
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "stream", "system-proxy"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+sha2 = "0.10"
+url = "2"
+getrandom = "0.3"
+fs4 = { version = "0.13", default-features = false, features = ["sync"] }
+
+[target.'cfg(unix)'.dependencies]
+# A safe SIGTERM. `unsafe` stays forbidden in this crate.
+rustix = { version = "1", features = ["process"] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+serde_json = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+# Disk is tight on the owner's machine, and full debug info is most of a build's size.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
