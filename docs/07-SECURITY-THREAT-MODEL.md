@@ -23,7 +23,7 @@ A stranger's file; a shared note or imported page containing instructions for th
 | SEC-F07 | Smuggled files alongside the manifest | Refused, `CN-PKG-0009` | Tested, reader. Engine Planned 1 |
 | SEC-F08 | Deep JSON exhausts the stack | Nesting limit | Tested, reader. Engine Planned 1 |
 | SEC-F09 | Imported HTML runs script, or loads tracking content | Sanitised to a block model. No HTML reaches the DOM. No fetch | Planned 6 |
-| SEC-F10 | Attachment opened as code | Attachments are never run. Saving is explicit | Planned 4 |
+| SEC-F10 | Attachment opened as code | Attachments are never run. Saving is explicit. Test: a script attachment has no execution path, `FIL-01` | Planned 2 |
 | SEC-F11 | SVG attachment carries script | Rendered only through an image element under CSP | Planned 4 |
 | SEC-F12 | PDF used as a background exploits a viewer | Runs in the browser's sandboxed path or a bounded parser. Decided in [43](43-CANVAS-AND-INK.md) | Planned 3 |
 
@@ -35,6 +35,7 @@ A stranger's file; a shared note or imported page containing instructions for th
 | SEC-S02 | Storage reads notes | Authenticated encryption before upload | Planned 7 |
 | SEC-S03 | Storage tampers, replays or withholds | Authenticated segments, sequence checks. Withholding shows as a stale device in the state panel | Planned 7 |
 | SEC-S04 | Metadata leak: sizes, counts, timing | **Not prevented.** Stated plainly in the product and docs | Accepted risk |
+| SEC-S08 | Removed or stolen device keeps writing under the old key | The new key record carries a per-device cutoff. Later old-key objects, acks and removal records are refused | Planned 7 |
 | SEC-S05 | Removed device keeps reading | Key rotation on removal. It can still read what it already had, and the product says so | Planned 7 |
 | SEC-S06 | Lost passphrase | Recovery key, with a plain warning. No backdoor | Planned 7 |
 | SEC-S07 | Update bomb: huge history | Size limits per segment and per page | Planned 7 |
@@ -48,6 +49,9 @@ A stranger's file; a shared note or imported page containing instructions for th
 | SEC-W03 | Automatic fetch leaks that a note was opened | No remote images or links load automatically | Planned 2 |
 | SEC-W04 | Clipboard paste brings script | Paste is parsed and sanitised to blocks | Planned 2 |
 | SEC-W05 | Link to a dangerous URL scheme | Allow-list of schemes | Planned 2 |
+| SEC-W06 | **Injected script in the desktop webview calls shell commands** to redirect notes, keys, sync or a model | Native confirmation drawn by the shell for endpoint, storage and model changes. Keys bound to their origin in Rust ([44](44-DESKTOP-SHELL.md)) | Planned 6 |
+| SEC-W07 | **Stored script reads a remembered web API key.** A CSP read from `localStorage` is not a defence | Sanitising is the defence. Keys are session-only by default, and remembering is an explicit choice with a warning ([62](62-AI-ASSISTANT-AND-PROVIDERS.md)) | Planned 5 |
+| SEC-W08 | A note in a script without local fonts triggers a font request | Slices precached, or system fonts. Font-less test ([50](50-INTERNATIONALIZATION.md)) | Planned 2 |
 
 ## AI
 
@@ -57,9 +61,10 @@ A stranger's file; a shared note or imported page containing instructions for th
 | SEC-A02 | Approval fatigue, or a misleading approval card | The card shows the real change, from the tool arguments, never the model's words | Planned 5 |
 | SEC-A03 | Exfiltration through an embedded link or image in a reply | Replies render as text. Links are not auto-fetched | Planned 5 |
 | SEC-A04 | Notes reach a provider unexpectedly | Off by default. The panel names the provider. No background sending | Planned 5 |
-| SEC-A05 | Encrypted notebook content goes to a provider | Needs explicit opt-in per notebook | Planned 5 |
+| SEC-A05 | Encrypted notebook content goes to a provider or MCP client | Explicit opt-in per notebook, enforced in `-tools` for every surface. Tested again once encryption exists | Planned 7 |
 | SEC-A06 | Key appears in export, sync, logs or mirror | Keys live in a separate store with no path to those. A test searches all output for a seeded key | Planned 5 |
 | SEC-A07 | Runaway tool loop costs money | Round limit, stop button, usage shown | Planned 5 |
+| SEC-A08 | **An approved write copies private text to a shared page.** A shared note tells the assistant to do this, and the person clicks Allow | The approval card shows audience and sources read, from engine data. Private-to-shared copies get a distinct warning and full preview. **This reduces the risk and cannot remove it** | Planned 5 |
 
 ## Local model
 
@@ -67,8 +72,9 @@ A stranger's file; a shared note or imported page containing instructions for th
 | --- | --- | --- | --- |
 | SEC-L01 | **A website calls the local model server.** `llama-server` defaults to allowing any origin | Loopback only, random key per run, origins restricted. Test sends a cross-origin request | Planned 6 |
 | SEC-L02 | Another local program uses the server | The random key. A determined local program with the same user's rights is out of scope, and the docs say so | Planned 6 |
-| SEC-L03 | Tampered model download | Pinned SHA-256, reviewed list | Planned 6 |
-| SEC-L04 | A malicious model file exploits the parser in the runtime | Reviewed list by default, warning on custom files, runtime in a separate process | Planned 6 |
+| SEC-L03 | Tampered model download, including a tampered partial file | Pinned SHA-256 over the whole final file before install and before each start, reviewed list | Planned 6 |
+| SEC-L04 | A malicious model file exploits the parser in the runtime | Reviewed list by default, warning on custom files, OS sandbox with no network or notebook access. A separate process alone contains nothing. Where a platform has no sandbox, the interface says so | Planned 6 |
+| SEC-L06 | Another program takes the port and receives the key and prompts | Bind first, then a nonce challenge proves the identity of the server before anything is sent | Planned 6 |
 | SEC-L05 | Licence trap in a model | Licence shown first; reviewed before listing (ADR-027) | Planned 6 |
 
 ## Agent access
@@ -78,6 +84,7 @@ A stranger's file; a shared note or imported page containing instructions for th
 | SEC-M01 | An MCP client reads outside the workspace | `--root` allow-list, canonical paths, symlink escapes refused. No root, no access | Planned 5 |
 | SEC-M02 | A client writes unexpectedly | `--read-only` flag. Each write is one undo step | Planned 5 |
 | SEC-M03 | Tool output too large | Bounds per call, truncation stated | Planned 5 |
+| SEC-M04 | **A note injects instructions into an MCP client, which reads everything and sends it out through its own tools.** `--read-only` does not help, and we do not control the client | Setup text says so. `--root` per notebook narrows what is reachable. **Not fully preventable from our side** | Planned 5 |
 
 ## Server
 

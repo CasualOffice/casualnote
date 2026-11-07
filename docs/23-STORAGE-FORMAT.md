@@ -41,17 +41,26 @@ Notebook.cnote/
   readable/                           the mirror; deleting it loses nothing
     Project/Meeting.md
     Project/Meeting.json
+    Project/Meeting.ink.jsonl
     Project/Meeting.svg
     files/...
   readable-edited/                    files a person changed in the mirror, set aside
   local/                              this device only; never synced
     device.json
+    device.next.json                  only while moving to a new device id
+    rehome.idx                        same: old segments already republished
     lock
-    poison.marker
+    poison.marker                     import attempts per segment
     mirror.idx
     verified.idx                      files whose whole-file hash has been checked once
     quarantine/
     reserve.bin
+    sync/                             only when sync is on
+      outbox/<kind>/<seq16>.<ext>     sealed objects, the same bytes on every retry
+      inbox/<device>/<kind>/<seq16>.<ext>  fetched, and not yet filed and imported
+      cursors.idx                     listing position per device and kind
+      map.idx                         sync seq to (doc_key, sequence), both ways
+      devices.idx                     every device ever seen
 ```
 
 | Name | Rule |
@@ -59,12 +68,15 @@ Notebook.cnote/
 | `<key>` | Lower-case hex of the first 16 bytes of `SHA-256(class byte, id bytes)`. **A document id is never a path,** so a hostile or long id cannot name one, and no case or Unicode-form collision can occur |
 | `<k2>`, `<b2>` | First two hex characters, so no single directory grows past what file systems and OPFS handle well |
 | `<device>` | 32 lower-case hex characters |
-| `<sequence>` | 16 lower-case hex characters. Per device, per document, gapless, from 1 |
+| `<sequence>` | 16 lower-case hex characters. Per device, per document, gapless, from 1. This is not the sync object's `seq`, see Sync objects |
 | `<sha256>` | The whole file's SHA-256, 64 lower-case hex characters, the same hash as in the package's `assets/` |
+| `<kind>`, `<seq16>`, `<ext>` | As in the storage layout of [56](56-SYNC-DESIGN.md): `s` and `.cnss` for segments, `a` and `.cnsa` for acks, and so on |
 
 **The log directory holds every device's segments,** its own and those fetched from others. A device only ever creates files under its own device id (ADR-021).
 
 **Who may write what.** Sync ([56](56-SYNC-DESIGN.md)) reads sealed segments, and adds other devices' segments. Only `-store` writes everything else. `local/` is never uploaded, and neither is `readable/` for an encrypted notebook.
+
+**Sync objects.** A segment here holds one document. A sync object holds one or more of these files whole, unchanged, for any number of documents. [Local segments and sync objects](56-SYNC-DESIGN.md) gives the mapping: what each sequence means, how fetched objects are filed under `log/`, and how coverage translates through `local/sync/map.idx`. Once filed, a fetched segment is an ordinary foreign segment on this page.
 
 ### manifest.json
 
@@ -148,12 +160,12 @@ The CRCs catch tearing and bit rot. They are not security. Authenticity against 
 
 #### Peer payload, type 2
 
-Written as the first frame of each segment, and whenever the peer id changes.
+Written as the first frame of each segment, and whenever the peer id changes. **Every open of a notebook for writing mints a new peer id,** from the host's randomness, so a counter is never reused ([24](24-OPERATIONS-AND-MERGE.md)).
 
 | Offset | Size | Field | Meaning |
 | --- | --- | --- | --- |
 | 0 | 8 | peer_id | The CRDT peer id in use from here on |
-| 8 | 1 | reason | 0 unchanged, 1 new device, 2 recovery truncated a tail, 3 install id changed, 4 fork detected, 5 previous segment abandoned after a failed flush |
+| 8 | 1 | reason | 0 unchanged, 1 new device, 2 recovery truncated a tail, 3 install id changed, 4 fork detected, 5 previous segment abandoned after a failed flush, 6 notebook opened, 7 damage in the previous segment, 8 document's replica rebuilt after a rejection or fork |
 | 9 | 7 | reserved | 0 |
 
 #### Seal payload, type 3, 48 bytes
@@ -164,7 +176,7 @@ Written as the first frame of each segment, and whenever the peer id changes.
 | 8 | 8 | bytes_before | File offset of this frame's header |
 | 16 | 32 | segment_sha256 | SHA-256 over bytes 0 to `bytes_before - 1` |
 
-Nothing may follow a seal (`CN-STO-0005`). **Foreign segments must be sealed.** A device refuses an unsealed segment from another device.
+Nothing may follow a seal (`CN-STO-0005`). **Foreign segments must be sealed.** A device refuses an unsealed segment from another device. The one case of an unsealed file under another id is this folder's own earlier identity, and moving to a new device id seals those first (below). Sync only ever adds sealed files, so nothing else can be mistaken for one.
 
 **A segment is sealed when:** it reaches 8 MiB; the notebook closes cleanly; or sync is on and the document has been idle for 30 seconds. On the next write, a new segment starts. Compaction bounds the local file count. How many small uploaded segments sync storage keeps is for [56](56-SYNC-DESIGN.md).
 
@@ -215,20 +227,32 @@ Runs on open. It reads the whole of what it uses, is idempotent, and may itself 
 | --- | --- | --- |
 | 1 | Take `local/lock` through the host | Held elsewhere: `CN-STO-0003`. Read-only or forward to the holder |
 | 2 | Read `manifest.next.json`, if valid. Otherwise read `manifest.json` | Finish a migration if one was under way. Missing or invalid: `CN-STO-0001`. Newer major: `CN-STO-0002`, nothing written |
-| 3 | Read `local/device.json`, and compare `install_id` with the host's | No file: new device. Mismatch: a copied folder. New device id and peer, `CN-STO-0018` reported as information. `local/` is otherwise reset |
-| 4 | Check `local/poison.marker` | Present: the named segment is moved to `local/quarantine/`, `CN-STO-0016` reported, marker removed |
+| 3 | Read `local/device.json`, and compare `install_id` with the host's | No file and an empty log: new device. Mismatch, or no file and a non-empty log: a moved or copied folder. Run **Moving to a new device id** below before anything else, including lazy document steps. `CN-STO-0018` reported as information |
+| 4 | Check `local/poison.marker` | Each record counts attempts started and not finished on one segment. Below 3: the segment stays, and step 14 imports it again, which is safe because import is idempotent ([24](24-OPERATIONS-AND-MERGE.md)). 3, another device's: moved to `local/quarantine/`, `CN-STO-0016`, record removed. 3, this device's own: **never moved.** Its document blocks with a visible state, `CN-STO-0021`, is readable from what comes before that segment, and export is offered, with the segment's bytes |
 | 5 | **For each document opened:** list `log/`, and parse headers | A bad header on a foreign file: quarantined. On this device's own newest file: see step 6. Name and header disagree: `CN-STO-0004` |
 | 6 | Scan this device's active segment frame by frame, checking every CRC and `frame_index` | Find `good_end`, the end of the last valid frame |
-| 7 | **Decide tail or damage.** Search after `good_end` for a later valid frame: `frame_magic` with a valid `frame_crc32c` and valid payload | **None: a torn tail,** go to step 8. **Found: damage in the middle,** not a crash. Do not truncate. Copy the file to quarantine, read up to `good_end`, report `CN-STO-0005`, and mark for refetch from other devices. Start a new segment |
+| 7 | **Decide tail or damage.** Search after `good_end` for a later valid frame: `frame_magic` with a valid `frame_crc32c` and valid payload | **None: a torn tail,** go to step 8. **Found: damage in the middle,** not a crash. Copy the whole file to quarantine first. Then `set_len(good_end)`, `sync_file`, write a Seal frame and `sync_file`. This good-prefix copy keeps the same sequence, so its frames can leave and the chain stays whole. Report `CN-STO-0005`. The next segment names this seal in `prev_segment_sha256`, with reason 7. Valid frames past the damage stay in quarantine, named in the panel |
 | 8 | Copy the bytes after `good_end` to `local/quarantine/`, then `set_len(good_end)`, then `sync_file` | **Bytes are moved aside before they are cut.** Only unacknowledged data can be here, because an acknowledged frame was flushed in full |
-| 9 | If step 8 cut anything, or step 3 found a change: write a Peer frame with a new peer id | So counters that may have been used are never reused |
-| 10 | Sealed segments: check `segment_sha256`, once per file, recorded in `local/verified.idx` | Mismatch: `CN-STO-0006`, quarantined, refetched. Other documents are unaffected |
-| 11 | Check chains and sequence order per device | Gap: wait and report in the state panel (PR-2). Fork: `CN-STO-0007`. Both branches are imported, since CRDT import merges them |
+| 9 | Mint this open's peer id. Its Peer frame goes first on the next write: reason 7 after step 7, 2 if step 8 cut anything, 3 after a move, otherwise 6 | So counters that may have been used are never reused, and nothing written later depends on frames that were lost |
+| 10 | Sealed segments: check `segment_sha256`, once per file, recorded in `local/verified.idx` | Mismatch: `CN-STO-0006`, quarantined, refetched. An own segment is rebuilt from its outbox object if there is one. An own segment that never left gets the good-prefix copy of step 7, since no other device can hold a different one. Other documents are unaffected |
+| 11 | Check chains and sequence order per device | Gap: wait and report in the state panel (PR-2). A gap has a way out in [56](56-SYNC-DESIGN.md), so nothing waits for ever. Fork: `CN-STO-0007`. CRDT import is not assumed to merge branches, which is unverified (`SPK-01`). Only the canonical branch is imported, and the divergent one is salvaged as a visible restored copy, by the rule in [56](56-SYNC-DESIGN.md) |
 | 12 | Choose the best snapshot: valid footer, then the most covered frames | Invalid snapshots ignored, and removed by compaction. Base snapshots checked first |
-| 13 | `MergeDoc::load` the snapshot. On a snapshot's first use (`verified.idx`), project it and compare its state hash | Cache mismatch: `CN-STO-0012`, discard it and rebuild from the log. Base mismatch: `CN-STO-0012` and `CN-STO-0019`, refetch |
+| 13 | `MergeDoc::load` the snapshot. On a snapshot's first use (`verified.idx`), compute the [state hash](22-DATA-MODEL.md) from what was loaded and compare it with the header | Cache mismatch: `CN-STO-0012`, discard it and rebuild from the log. Base mismatch: `CN-STO-0012` and `CN-STO-0019`, refetch |
 | 14 | Guarded import of every frame not covered, then project and repair | [24](24-OPERATIONS-AND-MERGE.md) |
 | 15 | Remove stale `index.part` files only if older than 30 days, and any unreferenced empty segments | |
 | 16 | Open for writing | First write starts a new segment if the last one is sealed |
+
+**Moving to a new device id.** A copied or moved folder holds the old id's segments, perhaps with one still active, and an outbox of things not yet sent. Resetting `local/` first would strand them: an unsealed file is refused by everyone, and the old id may never publish again. So this runs first, in order, and may crash and restart at any step.
+
+| Step | Action | Crash here leaves |
+| --- | --- | --- |
+| 1 | Mint the new device id once, and write it to `local/device.next.json`, flushed. If the file is there, use it | A restart finds the same new id |
+| 2 | For every document, not lazily: run steps 6 to 8 on the old id's unsealed segments, and seal them. Damage gets the good-prefix copy of step 7 | Re-run. Nothing is cut twice |
+| 3 | Republish: write each old-id segment that no device ack is known to cover as new segments under the new id, with the same `update` bytes. Record each in `local/rehome.idx` | Re-run skips what is recorded. A lost record costs a repeat, and identical updates are harmless if import is idempotent (`SPK-01`) |
+| 4 | Drop outbox objects not yet written, since step 3 republished what they held. Keep `local/quarantine/`, and reset the rest of `local/` | Re-run |
+| 5 | Write the new `local/device.json`. **This is the commit point.** Remove `device.next.json` and `rehome.idx` | The move is done |
+
+The old id's sealed files stay in `log/` as foreign segments. The original may still be alive, so the old id stays registered until a person confirms it is gone ([56](56-SYNC-DESIGN.md)). Progress shows in the state panel, and this is the one recovery path that reads every document.
 
 **A limit worth stating.** Bit rot in the very last acknowledged frame looks like a torn tail. Bytes go to quarantine and the frame is lost locally. Other devices, or the quarantine file, are the only remedy, and a single-device notebook has no other copy. We do not claim to prevent this.
 
@@ -285,8 +309,8 @@ Replaces covered segments with a base snapshot, to keep storage in bounds. Full 
 | Step | Action | Crash here leaves |
 | --- | --- | --- |
 | 1 | Pick sealed segments for this document that are all imported | No change |
-| 2 | Conditions: this device's own segments are uploaded if sync is on; no segment is quarantined; the document is not being read for a fork | No change |
-| 3 | Write a `base` snapshot with `covers`, and verify by re-reading: load it into a fresh instance and compare `state_hash` | Extra file, harmless |
+| 2 | Conditions: this device's own segments are in a `Written` sync object if sync is on; this document has no segment waiting on a retry or a person's choice; the document is not being read for a fork | No change |
+| 3 | Write a `base` snapshot with `covers`, and verify from independent sources. Load it into one fresh instance. Rebuild another from the previous base and the covered segments alone, never from the live document, which may have moved. Their [state hashes](22-DATA-MODEL.md) and versions must equal each other and the header. Otherwise `CN-STO-0012`, and no segment is deleted | Extra file, harmless |
 | 4 | `sync_file`, `sync_dir` on the snapshot | Both forms present |
 | 5 | Delete covered segments, then `sync_dir` | Some segments left: harmless, since import is idempotent |
 | 6 | Delete older cache and base snapshots covered by the new one, `sync_dir` | |
@@ -357,6 +381,7 @@ Download from sync (`FIL-01`) follows the same steps: `index.cnb` is fetched fir
 | --- | --- |
 | `readable/<path>/<title>.md` | The same Markdown as the package's `readable/`, with front-matter `lang` when the page has one |
 | `readable/<path>/<title>.json` | Exactly the package's page JSON, per the same schema. A database page also gets its database's JSON, as `<title>.database.json` |
+| `readable/<path>/<title>.ink.jsonl` | The package's `ink/<page-id>.jsonl` for this page, when it has ink. `inkFile` in the JSON still gives the package path |
 | `readable/<path>/<title>.svg` | How the ink and placed items look, when the page has a canvas |
 | `readable/files/<name>` | Attachments under real names |
 
@@ -474,7 +499,7 @@ For [20](20-ERROR-CODE-REGISTRY.md).
 | `CN-STO-0004` | Segment header invalid, or name and contents disagree | The file is set aside, and named |
 | `CN-STO-0005` | Frame damage that is not a torn tail, or a malformed payload | Damage reported per document. The rest is readable, and refetch is offered |
 | `CN-STO-0006` | Sealed segment hash mismatch | As above |
-| `CN-STO-0007` | Sequence gap or fork in a device's segments | State panel. Gaps wait, forks merge |
+| `CN-STO-0007` | Sequence gap or fork in a device's segments | State panel. Gaps wait, with a way out. A fork's divergent branch becomes a visible restored copy |
 | `CN-STO-0008` | Frame over the limit | Refused before allocation |
 | `CN-STO-0009` | Too many files or frames in a segment or document | Refused for foreign data; rolls for own data |
 | `CN-STO-0010` | Flush failed | "Not saved", plus what to do |
@@ -483,11 +508,12 @@ For [20](20-ERROR-CODE-REGISTRY.md).
 | `CN-STO-0013` | Blob hash or size mismatch, or the source changed while copying | Named file. Retry |
 | `CN-STO-0014` | Blob over the limit | Named file |
 | `CN-STO-0015` | Unknown `crdt_codec` or `codec_version` in one file | Update the app, and the rest stays usable |
-| `CN-STO-0016` | A segment crashed the import, and was quarantined | State panel, naming the device |
+| `CN-STO-0016` | Another device's segment crashed the import 3 times, and was quarantined | State panel, naming the device, with a retry |
 | `CN-STO-0017` | Persistent storage refused or unavailable | A plain warning, or creation refused |
 | `CN-STO-0018` | `install_id` differs: a copied or restored folder | Information. A new device identity is registered |
 | `CN-STO-0019` | A document is unavailable because every copy failed checks | Listed. Export of everything else still works |
 | `CN-STO-0020` | Mirror write failed | State panel. Notes are unaffected |
+| `CN-STO-0021` | This device's own segment crashed the import 3 times. Never quarantined automatically | That document is blocked and read-only, with export and a retry. The rest of the notes work |
 
 ### Limits
 
@@ -498,7 +524,7 @@ Proposals, for [21](21-PARSER-LIMITS.md). Foreign data is checked before allocat
 | Frame payload | 64 MiB | `CN-STO-0008` |
 | Summary in a frame | 64 KiB | `CN-STO-0005` |
 | Own segment size before rolling | 8 MiB, or one larger frame | Rolls |
-| Foreign segment size | 64 MiB sealed, 256 MiB opened, as [56](56-SYNC-DESIGN.md) | `CN-STO-0009` |
+| Foreign segment size | 65 MiB sealed, which is the 64 MiB frame plus 1 MiB of overhead, as [56](56-SYNC-DESIGN.md). 256 MiB opened | `CN-STO-0009` |
 | Frames per segment | 1,000,000 | `CN-STO-0009` |
 | Segments per document before compaction is forced | 10,000 | `CN-STO-0009` |
 | Snapshot payload | 4 GiB | `CN-STO-0012` |
@@ -517,8 +543,8 @@ Proposals, for [21](21-PARSER-LIMITS.md). Foreign data is checked before allocat
 | --- | --- |
 | Hostile segment file names (`..`, wrong length) | `List` results must match the exact pattern. Others are ignored and reported |
 | Segment for an unknown document | A directory is created with its `doc_key`. Without a `doc.id` it can't be named, so it waits for the tree. Shown under Recovered (R-19) when it has a page's content |
-| Edits arrive for a purged page | Its segments are kept as a restored copy, not refused, because a device that was offline may hold the only copy (`SYN-05`) |
-| A backup is restored over the folder on the same machine | `install_id` matches, so this is not caught at step 3. The next sync sees a fork in the chain and rotates the peer. Until then, the device may reuse sequence numbers, and both branches are kept |
+| Edits arrive for a purged page | R-19 does not bring the page back. Its segments are kept, not refused, because a device that was offline may hold the only copy. Edits past the tombstone's `final` version become a restored copy (`SYN-05`). `PurgePage` itself refuses a page edited in the trash ([24](24-OPERATIONS-AND-MERGE.md)) |
+| A backup is restored over the folder on the same machine | `install_id` matches, so this is not caught at step 3. The open still mints a new peer, so no counter is reused. The device may reuse sequence numbers until the next sync sees the fork in the chain. The new branch is then handled by the fork rule in [56](56-SYNC-DESIGN.md), and neither branch is lost |
 | Too many open files | Writers close by LRU. Only documents being edited hold a handle |
 | A device's clock is wrong | No storage decision uses it |
 | Slow disks and network drives | Group commit gives lower "saved" rates rather than a slow keyboard. A sustained slowdown appears in the state panel |
@@ -547,6 +573,9 @@ Proposals, for [21](21-PARSER-LIMITS.md). Foreign data is checked before allocat
 | Every acknowledged batch survives a crash at any I/O point | Crash suite, with torn and reordered unflushed writes (`STO-01`) | Not built |
 | A bad frame in the middle is treated as damage, and at the tail as a crash | Fixtures per case | Not built |
 | Truncated bytes reach quarantine first | Crash suite | Not built |
+| A crash during import never quarantines before the third attempt, and never an own segment | Crash suite, plus a segment that always traps (`MRG-02`) | Not built |
+| A moved folder strands nothing: every old-id frame is sealed and republished, at every crash point | Crash suite, with an active segment under the old id | Not built |
+| Damage in the middle leaves a sealed good prefix under the same sequence, and later segments import | Fixture, then a second device reads it | Not built |
 | Failed flushes are not retried on one file | Fault injection | Not built |
 | Rebuild from segments equals base and cache snapshots | State hash (`STO-02`) | Not built |
 | Deleting cache snapshots loses nothing; deleting `readable/` loses nothing | Tests (`STO-02`, `STO-04`) | Not built |

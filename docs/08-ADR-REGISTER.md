@@ -35,6 +35,10 @@ ADR ids here are this repository's own, and OpenCalc's are cited as "its ADR-n".
 | ADR-027 | Model weights and fonts are dependencies with their own licence review, shipped separately from the code | Proposed | Owner review | [62](62-AI-ASSISTANT-AND-PROVIDERS.md) |
 | ADR-028 | The wasm engine loads in parts, with heavier features such as search models and PDF loaded on demand | Proposed | `SPK-02` | [42](42-EDITOR-AND-RENDERING.md) |
 | ADR-029 | PDF backgrounds are parsed by PDF.js in a worker, after a licence check | Proposed | `FND-42`, `SPK-03` | [43](43-CANVAS-AND-INK.md) |
+| ADR-030 | A fresh CRDT peer id per open, so counters are never reused. Forks salvage through a visible restored copy, never by trusting import to merge them | Proposed | `SPK-01` | [24](24-OPERATIONS-AND-MERGE.md) |
+| ADR-031 | Ops address targets by CRDT anchors plus a client sequence, so a device's own in-flight edits and remote imports never discard typed text | Proposed | `SPK-02` | [24](24-OPERATIONS-AND-MERGE.md) |
+| ADR-032 | The package holds ink in `ink/<page>.jsonl`, compact and streamed, apart from page JSON | Proposed | Owner review | [36](36-EXPORT-FORMAT.md) |
+| ADR-033 | Shell commands that redirect data need a confirmation drawn natively, and the model runs sandboxed | Proposed | `SPK-07` | [44](44-DESKTOP-SHELL.md) |
 
 ## Reversals on record
 

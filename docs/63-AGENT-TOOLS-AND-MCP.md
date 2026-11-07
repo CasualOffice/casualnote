@@ -6,7 +6,7 @@
 
 One closed set of tools works over a person's notes, with one meaning, through three surfaces: the built-in assistant, an MCP server for any MCP client, and a CLI (owner instruction 6, ADR-013). A person and an agent get the same answers, because a tool is a thin typed wrapper over an SDK call. The pattern is OpenCalc's agent access design and its `casual-calc-mcp`.
 
-Requirements: FR-17, PR-6. Threats: SEC-A01, SEC-A02, SEC-M01 to SEC-M03 in [07](07-SECURITY-THREAT-MODEL.md).
+Requirements: FR-17, PR-6. Threats: SEC-A01, SEC-A02, SEC-A05, SEC-A08, SEC-M01 to SEC-M04 in [07](07-SECURITY-THREAT-MODEL.md).
 
 ## Design
 
@@ -25,17 +25,39 @@ pub enum Access { Read, Write }
 pub struct ToolDef { pub name: &'static str, pub title: &'static str, pub description: &'static str,
                      pub access: Access, pub input_schema: &'static str }
 
+// Set by the host from what it is actually running, never by a tool argument.
+pub enum Destination { LocalModel, External }
+pub enum Surface { Assistant, Mcp, Cli }
+pub struct SurfacePolicy { pub surface: Surface, pub destination: Destination, pub read_only: bool }
+
 pub fn definitions(surface: &SurfacePolicy) -> Vec<&'static ToolDef>;
 
+// Pages whose text went to the model for this request, recorded by -tools.
+pub struct TurnLedger { /* page ids; context pack reads and tool reads */ }
+
 // Reads run in one step.
-pub fn run_read(ws: &Workspace, call: &ToolCall) -> ToolResult;
+pub fn run_read(ws: &Workspace, policy: &SurfacePolicy, turn: &mut TurnLedger, call: &ToolCall) -> ToolResult;
 
 // Writes run in two: nothing changes until commit.
-pub fn prepare_write(ws: &Workspace, call: &ToolCall) -> Result<PreparedWrite, ToolError>;
-pub fn commit_write(ws: &mut Workspace, prepared: PreparedWrite, actor: Actor) -> ToolResult;
+pub fn prepare_write(ws: &Workspace, policy: &SurfacePolicy, turn: &TurnLedger, call: &ToolCall) -> Result<PreparedWrite, ToolError>;
+pub fn commit_write(ws: &mut Workspace, policy: &SurfacePolicy, prepared: PreparedWrite, actor: Actor) -> ToolResult;
 
 pub struct PreparedWrite { pub preview: ProposedChange, /* validated op batch, base page version */ }
 ```
+
+### Encrypted notebooks
+
+**The opt-in is enforced here, in `-tools`, for every surface including MCP and the CLI** (SEC-A05). Enforcing it only in the assistant's context selection would leave the other routes open. `run_read`, `prepare_write` and `commit_write` all make one check first:
+
+- If the notebook is end-to-end encrypted, `destination` is `External`, and this notebook has no opt-in for this surface, the call is refused with `CN-TOL-0016` and returns no content, titles or candidates.
+- MCP and the CLI are always `External`, since whatever reads their output is outside our control.
+- The assistant is `LocalModel` only for the sidecar the shell supervises, as Rust reports it. A custom or loopback endpoint is `External`.
+- The opt-in has two scopes, per notebook: the hosted assistant, and agent surfaces (MCP and the CLI). One does not grant the other. It is kept on this device, is never synced, and is not in the notes, so no op, import or tool can set it.
+- A person sets it in Settings for that notebook. On desktop this goes through a native confirmation ([44](44-DESKTOP-SHELL.md)). On a machine with no app, an agent surface stays refused, and that is a stated limit.
+- `list_notebooks` still names a notebook and says it needs the opt-in. It shows nothing from inside.
+- Context selection reads through this same check ([62](62-AI-ASSISTANT-AND-PROVIDERS.md)), and search and graph tools make no exception ([60](60-SEARCH-AND-EMBEDDINGS.md), [61](61-KNOWLEDGE-GRAPH.md)).
+
+Encryption is planned for Phase 7, so this is designed now and tested again once it exists.
 
 ### The closed tool set
 
@@ -110,25 +132,60 @@ Follows ADR-013 and `TOOL-02`.
 1. `prepare_write` parses, resolves pages, validates through `-ops`, and builds an op batch and a `ProposedChange`. **Nothing has changed.**
 2. The surface decides. `commit_write` applies the batch.
 
-`ProposedChange` is structured facts, from which the card is built in the interface language. **It has no field for the model's words** (SEC-A02).
+`ProposedChange` is structured facts, from which the card is built in the interface language. **It has no field for the model's words** (SEC-A02). Each field is computed by `-tools` and the engine, in Rust, from the validated batch and the engine's own state. Nothing in it comes from the model except the text being written, which the card presents as that text.
 
 ```rust
-pub enum ProposedChange {
+pub struct ProposedChange {
+    pub change: Change,
+    pub audience: Audience,        // who can read the target, from the engine's sharing state
+    pub sources: Vec<SourceRead>,  // pages read this turn, from TurnLedger
+    pub widens: bool,              // computed: the target's readers go beyond a source's
+    pub digest: [u8; 32],          // SHA-256 of the validated text; commit refuses if it differs
+}
+pub enum Change {
     CreatePage { title: String, parent: Option<PageRef>, blocks: Vec<BlockPreview> },
     AppendToPage { page: PageRef, blocks: Vec<BlockPreview> },
     AddRow { database: DatabaseRef, name: String, owner: Option<String>, due: Option<Date> },
 }
+pub enum Audience { OnlyYou, Shared { people: u32, names: Vec<String>, link: bool }, Unknown }
+pub struct SourceRead { pub page: PageRef, pub audience: Audience }
+
+pub struct BlockPreview {
+    pub kind: BlockKind,
+    pub text: String,             // up to 1 KiB, cut at a grapheme boundary
+    pub text_bytes: u32,          // the block's whole length
+    pub truncated: bool,
+    pub invisible_controls: bool, // the text holds bidi or invisible controls
+}
+// The whole text, read from the validated batch, in pages.
+pub fn full_preview(prepared: &PreparedWrite, cursor: Option<Cursor>) -> FullPreviewPage;
 ```
+
+**Audience.** Who can read the target, from the sharing state the engine holds ([57](57-SERVER-DESIGN.md)). A new page takes its parent's. Sharing arrives in Phase 8, so until then every page is `OnlyYou` and the warning below cannot fire. If the state is not known, for example offline with stale permissions, it is `Unknown`. `AddRow` is covered like the others, since a row's text can carry private text too.
+
+**Sources.** Every page whose text went to the model for this request: tool reads, the open page, selected text and context pack snippets, plus earlier tool results still in the history being sent, because that text is just as available to copy. `TurnLedger` records them as `-tools` serves them, and the model cannot add or remove one. MCP and the CLI have no card and no turn, so their ledger stays empty.
+
+**`widens`.** True when the target's readers go beyond those of any source, compared on the member sets the engine holds. A target of `Unknown` counts as widest, and a source of `Unknown` counts as narrowest. `-tools` does not try to decide whether the text really came from that source. A paraphrase or translation would defeat any match, so the warning fires on possibility.
+
+**Large text.** The card shows at most 20 `BlockPreview`s inline, each up to 1 KiB, with the totals: "312 blocks, 58,000 characters". "Review all text" opens `full_preview`, which reads the same bytes that commit will write. `digest` ties the two, so what was reviewed is what lands.
 
 | Surface | Decision |
 | --- | --- |
-| Assistant | Shows an approval card. Allow commits; Decline returns `CN-TOL-0005`. Stop acts as Decline. Titles and body text appear as isolated text so hostile direction characters can't change how the sentence reads |
+| Assistant | Shows an approval card. Allow commits; Decline returns `CN-TOL-0005`. Stop acts as Decline. Titles and body text appear as isolated text so hostile direction characters can't change how the sentence reads. The card always shows the audience and sources |
 | MCP | Commits unless `--read-only`. **Our server has no approval interface.** Any approval is the client's. We send annotations, and cannot enforce them |
 | CLI | Commits unless `--read-only` |
 
 **The MCP position.** PR-6 says AI never acts without you, while ADR-013's approval rule, SEC-M02 and the prototype all cover assistant writes only. A person who adds this server to a client has chosen to, and `--read-only` is the control, but an MCP client that auto-approves does write without a card. The product must say this, in the server's README and in the setup text. **Proposed resolution** (row `FND-69`): keep writes on by default, as `casual-calc-mcp` does, and narrow PR-6's wording to the assistant, with this exception stated. Otherwise, default to read-only with `--allow-write`. The owner decides.
 
-**Stale previews.** `commit_write` checks the base page version. If the page moved on and the change no longer applies cleanly, it refuses with `CN-TOL-0012`, and the model can try again, showing a new card. An append after someone else's edit still applies.
+**When text could reach more readers.** If `widens` is true, the assistant's card changes (SEC-A08):
+
+- A distinct warning, not the ordinary card with a longer sentence: "This may copy text from a page only you can read to a page 14 people can read." The sources and the target's readers are named in it.
+- **Full-preview review.** Allow stays disabled until the person has opened the full preview and reached its end. This works by keyboard and with a screen reader, by moving through the preview, not by scrolling a pointer. Focus never starts on Allow.
+- The same applies to `Unknown` audiences, worded as not knowing who can read the target.
+
+This reduces the risk and cannot remove it. A person can still approve, and text a person reads may not look private. MCP and the CLI have no card, so none of this applies there.
+
+**Stale previews.** `commit_write` checks the base page version, the audience and the digest. If the page moved on and the change no longer applies cleanly, or the audience has changed since the card was drawn, it refuses with `CN-TOL-0012`, and the model can try again, showing a new card. An append after someone else's edit still applies.
 
 **One write is one op batch, one undo step,** with an actor recorded: `assistant`, `mcp:<client name>` or `cli`. It appears in history under that name ([24](24-OPERATIONS-AND-MERGE.md)). In the app, Undo reverses it. For an MCP or CLI write, undo is per session in the process that made it and gone when it exits, so the person reverts through page history (FR-12). No undo tool is in this set. A client that wants one is a later ADR.
 
@@ -188,12 +245,20 @@ Follows `casual-calc-mcp`'s protocol implementation, copied with provenance unde
 - At most 16 notebooks open at a time, the same bound as `casual-calc-mcp`, closed in order of least recent use and on exit.
 
 ```sh
-casual-note-mcp --root ~/Notes [--root ~/Work/notes] [--read-only]
+casual-note-mcp --root ~/Notes/project-a [--root ~/Notes/project-b] [--read-only]
 ```
 
 ```json
-{ "mcpServers": { "casualnote": { "command": "/path/to/casual-note-mcp", "args": ["--root", "/path/to/notes", "--read-only"] } } }
+{ "mcpServers": { "casualnote": { "command": "/path/to/casual-note-mcp", "args": ["--root", "/path/to/notes/project-a", "--read-only"] } } }
 ```
+
+**The read risk, stated plainly** (SEC-M04). A note contains instructions aimed at an AI. The MCP client reads it, follows them, reads everything else it can reach through this server, and sends it out through its own tools, such as web access or email. **`--read-only` does not help,** because no write is involved. Our `instructions` text asks a model to treat results as data, and that is a request and not a boundary. This server has no network code, and that does not matter, because the client has. We do not control the client, and this is not fully preventable from our side.
+
+What narrows it is `--root`. A notebook under no root cannot be read at all, whatever a note says. So setup recommends **one `--root` per notebook, for the notebooks that client needs,** and not a parent folder holding everything. Encrypted notebooks stay refused without their own opt-in (`CN-TOL-0016`).
+
+**Setup text.** The server's README, its `--help` and the Agent access view all carry this wording, and copying the connect command shows it first ([47](47-UX-AND-FEATURE-MAP.md)):
+
+> This connects your notes to another program and its AI. A note can contain instructions aimed at that AI. If it follows them, it can read everything under the folders you list here and send it out with that program's own tools, such as web access or email. `--read-only` stops writes and does not stop this. List only the notebooks this program needs, each with its own `--root`.
 
 #### CLI
 
@@ -241,10 +306,13 @@ Note text is hostile input from the point of view of whatever model reads it. Ou
 
 | Risk | Handling |
 | --- | --- |
-| Note tells a model to do something | Results are data, and the rules and MCP `instructions` say so. Assistant writes need a card. MCP writes are bounded by `--read-only` and by the client |
+| Note tells a model to do something | Results are data, and the rules and MCP `instructions` say so. Assistant writes need a card. MCP writes are bounded by `--read-only` and by the client. None of these bounds what an MCP client reads, as the next rows say |
 | Text pretends to be a tool result | Results are JSON envelopes, so note text is always inside a string, escaped. Not a security boundary, since a model can still be fooled |
 | Injection into `tools/list` | Definitions are static and never hold note text |
-| A tool used to exfiltrate | No network tool exists. A write could copy text into a page, which needs a card in the assistant |
+| A tool used to exfiltrate | No network tool exists in this set |
+| An approved write used to exfiltrate | A write can copy private text to a page others read. The card shows audience and sources, and a possible widening needs full-preview review (SEC-A08). Reduced, and not removed. On MCP and the CLI there is no card, so only `--read-only` applies |
+| An MCP client reads everything and sends it out | **Its own tools do the sending, and `--read-only` does not help** (SEC-M04). Setup text says so, and `--root` per notebook narrows what is reachable. Not fully preventable from our side |
+| Encrypted notebook reaches a provider or client | Refused in `-tools` on every surface without an opt-in (`CN-TOL-0016`, SEC-A05) |
 | Tool used to reach other files | `--root`, no path argument except `notebook`, and `--text-file` on the CLI, which is not exposed to models |
 | Bidi or invisible characters mislead a card | Card fields are isolated. The card marks text containing invisible controls |
 | Terminal escape in a note | Escaped by the CLI |
@@ -271,10 +339,11 @@ The tool set has its own version ([02](02-ARCHITECTURE.md)), reported as `toolSe
 | Page in trash | `CN-TOL-0009` | States that it is in the trash |
 | `-ops` refused the batch | `CN-TOL-0010` | Gives the reason. Nothing changed |
 | Tool used on the wrong kind | `CN-TOL-0011` | `append_to_page` on a database suggests `add_task` |
-| Page moved on since preview | `CN-TOL-0012` | Try again |
+| Page moved on, or its audience changed, since preview | `CN-TOL-0012` | Try again |
 | Bad cursor | `CN-TOL-0013` | Start again |
 | Column missing on that database | `CN-TOL-0014` | Names the field, nothing written |
 | Internal error, panic caught | `CN-TOL-0015` | Nothing changed, or the state is named |
+| Encrypted notebook, no opt-in for this surface | `CN-TOL-0016` | Says the notebook needs an opt-in, set by a person in Settings. No content, titles or candidates. The assistant's panel shows `CN-AI-0013` |
 | No `--root` | `CN-MCP-0001` | Explains the flag |
 | Path outside every root | `CN-MCP-0002` | Names the path. Nothing is read |
 | Notebook not found or not a notebook | `CN-MCP-0003` | Suggests `list_notebooks` |
@@ -302,6 +371,8 @@ Proposals for [21](21-PARSER-LIMITS.md).
 | MCP message line | 16 MiB, as `casual-calc-mcp` |
 | Open notebooks | 16, as `casual-calc-mcp` |
 | Directory walk for `list_notebooks` | Depth 8, 1,000 notebooks |
+| `BlockPreview` text, inline on a card | 1 KiB per block, 20 blocks. The full preview shows everything, within the `text` limit |
+| Audience names; sources, on a card | 5; 20, then a count. All in the full preview |
 
 ## Alternatives considered
 
@@ -314,7 +385,9 @@ Proposals for [21](21-PARSER-LIMITS.md).
 | Partial title matching | Rejected | A prefix can select the wrong page, which matters for writes |
 | Model-written approval text | Rejected | SEC-A02 |
 | Embedding model in the MCP process | Rejected for now | Large, and needs a runtime. A later flag could point to an installed model, with no network |
-| Default read-only | Open | See the MCP position above |
+| Default read-only | Open | See the MCP position above. It would not address the read risk |
+| Matching written text against sources before warning | Rejected | A paraphrase or translation defeats it, and a person would then trust its silence |
+| Enforcing the encrypted opt-in in the assistant only | Rejected | MCP and the CLI would be open |
 | Second tool set for MCP | Rejected | ADR-013 |
 
 ## Acceptance gates
@@ -326,6 +399,10 @@ Proposals for [21](21-PARSER-LIMITS.md).
 | A declined write changes nothing, by comparing notebook state | `TOOL-02` |
 | One approved write is one undo step, and undo restores the state exactly | `TOOL-02` |
 | Card contains only `ProposedChange` facts, with a hostile title and bidi characters fixture | `TOOL-02`, SEC-A02 |
+| Audience, sources and `widens` come from engine state and the ledger: a model call cannot change them. A private-to-shared fixture shows the distinct warning, and Allow is disabled until the full preview ends, by keyboard too | `TOOL-02`, SEC-A08 |
+| A large write: the inline card is bounded, the full preview's bytes equal what commit writes, and a changed digest or audience refuses with `CN-TOL-0012` | `TOOL-02` |
+| Encrypted notebook with no opt-in: each tool on each surface refuses with `CN-TOL-0016`, with no content in the result. One scope's opt-in does not grant the other. No tool, op or import can set it | `TOOL-02`, SEC-A05 |
+| README, `--help` and the Agent access view carry the setup text. A note outside every `--root` stays unread in an injected-client fixture | `MCP-01`, SEC-M04 |
 | No unapproved write in any injection fixture | `AST-05` |
 | End-to-end: a real MCP session lists tools, searches, reads, writes, and undo holds in history | `MCP-01` |
 | Client conformance on each supported protocol revision | `MCP-01` |

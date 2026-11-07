@@ -6,7 +6,7 @@
 
 A person can chat with their notes using their own AI provider on the web (owner instruction 7) or a local model on desktop, in any language. It is off by default. Nothing leaves the device until they turn it on and press send, and the assistant never changes a note without their approval (PR-6).
 
-Requirements: FR-15, FR-16, PR-6. Trust boundaries: [02](02-ARCHITECTURE.md). Threats: SEC-A01 to SEC-A07, SEC-W02, SEC-L01 to SEC-L05 in [07](07-SECURITY-THREAT-MODEL.md).
+Requirements: FR-15, FR-16, PR-6. Trust boundaries: [02](02-ARCHITECTURE.md). Threats: SEC-A01 to SEC-A08, SEC-W02, SEC-W06, SEC-W07, SEC-L01 to SEC-L06, SEC-M04 in [07](07-SECURITY-THREAT-MODEL.md).
 
 ## Design
 
@@ -44,7 +44,7 @@ Messages use a neutral form: `user`, `assistant` (text and tool calls), and `too
 | `relay` | Any provider through `casual-note-server` | The same neutral form over a server route |
 | `fake` | Tests | Scripted events |
 
-Each adapter has a pluggable **transport**. On the web it is `fetch`. On desktop it is a Tauri channel to the shell, which makes the HTTP call and streams bytes back. That has a useful effect: desktop has no browser restrictions, so every provider works there with no relay.
+Each adapter has a pluggable **transport**. On the web it is `fetch`. On desktop it is a Tauri channel to the shell, which makes the HTTP call and streams bytes back. That has a useful effect: desktop has no browser restrictions, so every provider works there with no relay. The desktop transport passes a `provider_id`, never a URL or a key. Binding a new endpoint needs a confirmation drawn by Rust in a native dialog, showing the real origin ([44](44-DESKTOP-SHELL.md), SEC-W06).
 
 ### Web mode: the user's provider
 
@@ -53,7 +53,7 @@ Each adapter has a pluggable **transport**. On the web it is `fetch`. On desktop
 | Anthropic | Allowed with the `anthropic-dangerous-direct-browser-access` header. **Verified only through a third-party write-up** | API key. The header's name reflects the risk, and the settings page says what it means |
 | OpenRouter | PKCE sign-in is documented for browser apps | Redirect to OpenRouter with a code challenge, exchange the code for a key. No client secret. The key then follows the same rules as a pasted one |
 | OpenAI | **Not verified** | API key if browser calls work. Otherwise only through the relay |
-| Any OpenAI-compatible endpoint | **Depends on that server's CORS settings** | URL and key. HTTPS is required except for loopback |
+| Any OpenAI-compatible endpoint | **Depends on that server's CORS settings**, and for loopback on how each browser treats it (see the CSP table) | URL and key. HTTPS is required except for loopback |
 
 **A browser-refusing provider goes through the relay.** `casual-note-server` offers a route per configured upstream ([57](57-SERVER-DESIGN.md), `AST-04`). The upstream list is an allow-list set by the admin, never a URL from the client, so the relay cannot be used to reach internal hosts. It does not log bodies. In an end-to-end encrypted workspace the relay does see what the assistant sends, and the panel says so.
 
@@ -64,22 +64,59 @@ Each adapter has a pluggable **transport**. On the web it is `fetch`. On desktop
 Rows in this list are requirements with tests (`AST-03`, SEC-A06).
 
 1. **Never synced, exported, mirrored or logged.** Keys live in a separate store with no code path to those features. The test seeds a key and searches all output: packages, mirror, sync segments, logs, crash reports and tool results.
-2. **Per browser and per origin.** On the web a key lives in its own IndexedDB database, separate from any notebook. It cannot move with a profile through our code.
-3. **Only to that provider.** A key is sent only to the configured endpoint, or to the workspace's relay if chosen. Never to our server otherwise.
-4. **Not in the engine.** No key enters wasm, a worker holding notes, or a tool result. The provider adapter on the main thread holds it, only for the duration of a request.
-5. **Removable.** One click removes it, and "Forget all keys" exists.
-6. **The claim.** Encrypting a key at rest in a browser protects little, because a script able to read the store can also use the key. **We will not claim otherwise,** and we will not add encryption that only looks like protection.
-7. **Desktop.** Keys live in the operating system's keychain, through the shell ([44](44-DESKTOP-SHELL.md)). [02](02-ARCHITECTURE.md) mentions a `-secrets` crate to copy from OpenCalc, which [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) does not list (proposed row `FND-73`).
+2. **Session-only by default on the web.** A key lives in memory in the provider adapter, and nowhere else: not in `localStorage`, `sessionStorage` or IndexedDB. Closing or reloading the tab forgets it, and the panel asks again. An OpenRouter key from PKCE follows the same rule. A test seeds a key without remembering it, and finds it in no browser storage.
+3. **"Remember on this browser" is an explicit choice.** It is off until the person turns it on, per key, and it carries a plain warning: "This keeps your key in this browser. If a script ever gets into this page, it can read the key and spend on your account. Use a key you can revoke, with a spending limit." A remembered key lives in its own IndexedDB database per browser and per origin, separate from any notebook. It cannot move with a profile through our code.
+4. **Only to that provider.** A key is sent only to the configured endpoint, or to the workspace's relay if chosen. Never to our server otherwise. On the web this is what our code does, and not something it can enforce against an injected script. On desktop Rust enforces it, as the key is bound to its origin ([44](44-DESKTOP-SHELL.md)).
+5. **Not in the engine.** No key enters wasm, a worker holding notes, or a tool result. On the web only the provider adapter on the main thread holds it.
+6. **Removable.** One click removes it, and "Forget all keys" exists.
+7. **The claim.** Encrypting a key at rest in a browser protects little, because a script able to read the store can also use the key. **We will not claim otherwise,** and we will not add encryption that only looks like protection. Session-only narrows how long a key is exposed, and does not protect it from a script running while it is in memory.
+8. **Desktop.** Keys live in the operating system's keychain, through the shell, and are written through `provider_set_key` and never read back ([44](44-DESKTOP-SHELL.md)). [02](02-ARCHITECTURE.md) mentions a `-secrets` crate to copy from OpenCalc, which [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) does not list (proposed row `FND-73`).
 
-#### CSP: only the configured endpoint
+**The main defence against a stolen key on the web is keeping script out.** Document strings are set as text only, and a gate refuses raw HTML insertion ([42](42-EDITOR-AND-RENDERING.md), SEC-W01). The next section does not add to this for keys.
 
-SEC-W02 needs `connect-src` limited to one endpoint, but that endpoint is the person's choice, and a static web app cannot send a per-person header. Proposed (`FND-67`), using the rule that multiple CSPs must all be satisfied:
+#### A separate-origin connector page, to study
 
-1. **Header, fixed by whoever hosts the app, abridged here:** `default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' https:; form-action 'none'; base-uri 'none'; frame-ancestors` as configured.
-2. **Meta tag, first in the document, written by a small inline boot script allowed by hash:** `connect-src 'self' <configured origin>`. The boot script reads the origin (not the key) from `localStorage`. A meta tag can only narrow what the header allows.
-3. **Changing the provider reloads the page.** With AI off, the meta tag is `connect-src 'self'`.
+**Proposal, not a decision.** A second origin, such as `connect.<app host>`, serves one small page in a hidden frame. It holds the key and makes the provider call. It never renders a note, a title or any document string, so stored script in the notes page cannot run there. Its own header CSP lists exact provider origins and nothing writable by the notes page sets it. The notes page sends a request by `postMessage` with origins checked on both sides, and gets the stream back.
 
-**What this does not stop.** An injected script can still leave through a navigation, carrying data in a URL, since CSP no longer has a directive to limit navigation. So CSP reduces the risk, and SEC-W01, keeping script injection out, stays the main defence. A worker fetched from a URL takes its CSP from its own response, so adapters do not run in workers. The whole mechanism needs a browser test, since this is unverified across the three browsers. A model download on the web adds the catalogue's origin for that session only, after the person's click ([60](60-SEARCH-AND-EMBEDDINGS.md)).
+An injected script in the notes page could still use the connector to call that provider, since it can post what the notes page posts. It could not read the key or send it elsewhere, which is the gain. Unknown until studied: whether browsers' storage partitioning leaves a framed page able to remember a key, whether static hosters can serve a second origin, and how a person sees and approves the connection. It would be SEC-W07's stronger answer. A row is proposed.
+
+#### CSP: the normative table
+
+This section is the one statement of the policy, for web and desktop. [42](42-EDITOR-AND-RENDERING.md) points here, and [44](44-DESKTOP-SHELL.md) writes out the same desktop policy. Proposed (`FND-67`). All of it is unverified across browsers and webviews until a browser test runs it.
+
+**This CSP does not defend keys against stored XSS.** On a static host the narrowing below comes from a boot script that reads an origin from `localStorage`, and any script that has landed through a note can write `localStorage`. It sets the origin it likes, and on the next load the policy allows it. Reading the origin from attacker-writable storage is not a control. An injected script can also leave through a navigation, carrying data in a URL, since CSP no longer has a directive to limit navigation. So SEC-W02 must not count this CSP as protection for keys (SEC-W07). The defence is sanitising document strings, and the key rules above.
+
+**What it is still for.** It stops mistakes rather than attackers: a stray request from our code or a dependency, or an injected script that makes a plain request without first planning a reload. It also makes "AI off means no request" checkable (PR-6).
+
+| Directive | Web | Desktop |
+| --- | --- | --- |
+| `default-src` | `'none'` | `'none'` |
+| `script-src` | `'self' 'wasm-unsafe-eval'`, plus the boot script's hash | `'self'` |
+| `style-src`, `font-src`, `worker-src` | `'self'` | `'self'` |
+| `img-src`, `media-src` | `'self' blob:` | `'self' blob: cnasset:` |
+| `object-src`, `base-uri`, `form-action`, `frame-src` | `'none'` | `'none'` |
+| `frame-ancestors` | Set by the host, default `'none'`. Header only, as a meta tag cannot carry it | Not applicable |
+| `require-trusted-types-for` | `'script'` where supported | Same, if Tauri's injected scripts allow it (unverified) |
+
+| `connect-src` case | Web | Desktop: the webview's `connect-src` is `ipc: http://ipc.localhost cnasset: http://cnasset.localhost` in every row |
+| --- | --- | --- |
+| Static host, header | `'self' https: http://127.0.0.1:* http://[::1]:*`. Wide, because the host cannot know a person's choice, and a meta tag can only narrow | Fixed in `tauri.conf.json`, with no narrowing and no boot script |
+| AI off, no sync | Meta: `'self'` | No outside traffic |
+| Hosted provider | Meta adds that provider's origin | Not in the webview. Rust calls it after `provider_bind` |
+| Loopback model or server | Meta adds `http://127.0.0.1:<port>` or `[::1]`, with `localhost` rewritten to the address. To this document's knowledge Chrome and Firefox allow this from an HTTPS page, and Safari may not. Unverified (`FND-65`) | Not in the webview. The bundled model is reached only by Rust. Any other loopback server goes through `provider_bind` |
+| Sync storage | Meta adds that storage's origin, when the browser can reach it at all ([56](56-SYNC-DESIGN.md), `FND-21`) | Not in the webview. The sync host calls it after `sync_connect` |
+| Model download | Embedding model only. Meta adds the catalogue entry's source host and its listed redirect hosts, for one page load, after the person's click ([60](60-SEARCH-AND-EMBEDDINGS.md)). The marker is cleared on the next load | Not in the webview. The download manager fetches it |
+| Fonts | None. Same origin and precached ([50](50-INTERNATIONALIZATION.md)) | None. In the installer, or a pack the shell downloads on request |
+| Relay | `'self'`, or the workspace server's origin | Not in the webview |
+| Served by `casual-note-server` | **The header itself lists the exact origins:** this server, and the provider endpoints admin policy allows, with no `https:`. No `localStorage` is involved, so this is a real limit on `fetch`, though not on navigation | Not applicable |
+
+**The mechanism on a static host,** using the rule that multiple CSPs must all be satisfied:
+
+1. **Header**, fixed by whoever hosts the app, as in the table.
+2. **Meta tag, first in the document, written by a small inline boot script allowed by hash:** `connect-src` as in the table. The boot script reads the origins, never a key, from `localStorage`.
+3. **Changing the provider or storage reloads the page,** and a session-only key is asked for after that reload. A one-load download also reloads, which forgets a session-only key. That is a cost of the default.
+
+A worker fetched from a URL takes its CSP from its own response, so adapters do not run in workers.
 
 ### Desktop mode: a local model
 
@@ -87,23 +124,26 @@ Owner instruction 7, ADR-016, `SPK-07`.
 
 **Runtime.** `llama.cpp` (MIT) `llama-server` gives OpenAI-compatible chat, embeddings and function calling, per its README. It is C++, so it runs as a **separate process** from the shell, and the engine never loads it (ADR-016, SEC-L04). The alternative is `llama-cpp-rs` (Apache-2.0) in-process, which `SPK-07` compares. In-process has no port to defend, but a crash or malicious model file takes the app with it, so it is not preferred.
 
+**A separate process alone contains nothing,** since it has this person's rights. So the runtime runs under an operating system sandbox where one exists, with no network other than the shell's one listener, and no file access beyond the model and the runtime's needed paths: macOS App Sandbox or seatbelt, Linux namespaces, Windows AppContainer or job objects. All are **unverified until `SPK-07`.** Where none applies, the interface says so (`CN-DSK-0019`). Detail is in [44](44-DESKTOP-SHELL.md).
+
 **The port is the attack surface.** Its default `--cors-origins` is `*`, and any website the person visits can reach localhost.
 
 | Rule | How |
 | --- | --- |
 | Loopback only | `--host 127.0.0.1`, never `0.0.0.0`. The shell picks a free port each run |
+| Bind, then verify | Before the key or a prompt leaves the shell, the server must answer a nonce challenge using a secret given at spawn over a pipe ([44](44-DESKTOP-SHELL.md)). A program squatting on the port gets a nonce and nothing else (`CN-MDL-0010`, SEC-L06). `llama-server` is not known to offer this (unverified), and `SPK-07` chooses how it is provided |
 | A key per run | `--api-key` with 32 random bytes from the operating system, held only by the shell. An API key also defends against DNS rebinding, which an origin check would not. A key on a command line is visible to other local processes, so `SPK-07` checks whether a key file or environment variable works instead (unverified). SEC-L02 states the limit against a program running as the same user |
 | Restricted origins | `--cors-origins` is set to one fixed value that no website can have. The webview never calls the port: all calls go through the shell |
 | Nothing else exposed | `SPK-07` lists the server's routes and turns off anything unused, such as a built-in web interface, if flags allow |
 | Proven by test | Requests from another origin, with no key, and with a wrong key are all refused (`DSK-03`). This runs against each new `llama-server` version we adopt |
 
-**Lifecycle.** The shell starts the server when the assistant first needs it, polls until ready, and stops it after an idle time (proposed: 10 minutes), to keep memory near PERF-15 otherwise. It is stopped on exit, and on start any orphan from a crash is found by a recorded process id and stopped. The process runs at lower priority, so typing stays within PERF-01. A crash shows `CN-MDL-0007` and offers a restart. It never restarts in a loop.
+**Lifecycle.** The shell starts the server when the assistant first needs it, polls until ready, and stops it after an idle time (proposed: 10 minutes), to keep memory near PERF-15 otherwise. It is stopped on exit, and on start any orphan from a crash is found by a recorded process id, checked against process identity, and stopped only if it matches. The process runs at lower priority, so typing stays within PERF-01. **It never restarts by itself.** A crash shows `CN-MDL-0007` and offers Start, and each start after a failure is the person's action, with the full check. The third failure in 10 minutes shows `CN-DSK-0011` and suggests a smaller model ([44](44-DESKTOP-SHELL.md)).
 
 **Binary.** `llama-server` ships as a signed Tauri sidecar per platform (`DSK-04`). GPU build variants are decided in `SPK-07`. Its licence is listed in the SBOM.
 
-**Ollama (MIT).** If a person already runs it, Settings has a "Detect Ollama" button. Only that click sends a request, to its default loopback address (port from memory, confirm in `SPK-07`). Models it lists can be chosen through the `openai-compatible` adapter. We never start or configure Ollama, and its port security is its own.
+**Ollama (MIT).** If a person already runs it, Settings has a "Detect Ollama" button. Only that click sends a request, to its default loopback address (port from memory, confirm in `SPK-07`). Models it lists can be chosen through the `openai-compatible` adapter, after the native confirmation of `provider_bind`. We never start or configure Ollama, and its port security is its own.
 
-**Any existing server.** A person may point at an OpenAI-compatible server they run themselves, with the warning that its security is theirs.
+**Any existing server.** A person may point at an OpenAI-compatible server they run themselves, with the same native confirmation and the warning that its security is theirs. It is not treated as a local model for encrypted notebooks, as we cannot know where it sends text.
 
 #### Model catalogue
 
@@ -135,15 +175,16 @@ Runs in the shell (`DSK-02`). The engine has no network.
 ```
 choose model → confirm screen: size, licence with link, source, free disk space
   → downloading: <file>.part, resumable by HTTP Range, progress, pause, cancel
-  → verify SHA-256 against the catalogue (CN-MDL-0002 deletes the file)
-  → check the GGUF header, bounded → ready
+  → hash the whole final file, verify SHA-256 against the catalogue (CN-MDL-0002 deletes the file)
+  → check the GGUF header, bounded → rename into place → ready
+each start → hash the whole file again → first start of this hash: native confirmation → run
 ```
 
 - **Nothing downloads without a click,** and the size is shown before starting.
-- **Resume** re-checks the final hash over the whole file, so a bad partial can never pass.
+- **The final file is hashed in full before rename and before each start, whatever resume did,** so a bad partial or a later change can never pass. The time this takes on a large file is unmeasured, and progress is shown.
 - **Model files are data and never run as code.** Each file lives in the app's data directory, with one file per hash.
 - **Disk.** Not enough free space refuses before starting (`CN-MDL-0001`).
-- **Custom model.** A person may choose a local GGUF file or a URL, with a plain warning that it is unreviewed, that a malicious file might attack the runtime (SEC-L04), and that its licence is theirs to check. The computed hash is shown. `tools` starts as `none` until they turn it on.
+- **Custom model.** A person may choose a **local GGUF file only,** never a URL, with a plain warning that it is unreviewed, that a malicious file might attack the runtime (SEC-L04), and that its licence is theirs to check. The warning and the computed hash appear in a native confirmation. Before each start the file is hashed against that value. `tools` starts as `none` until they turn it on.
 - **Air-gapped (QR-6, ENT-R04).** "Add from file" accepts a catalogue model from disk and checks its hash.
 
 ### Prompt construction
@@ -176,7 +217,7 @@ Parts 4 and 5 are **pre-retrieval**: run by the app, not requested by the model.
 
 **Budget.** With `contextTokens` from the capabilities or catalogue, reserve output first, then fill by priority. When the size is unknown, a conservative default is used. Without a tokeniser for every provider, estimate from text: each Han, kana, Hangul or Thai grapheme counts as one token, and other text as bytes divided by three. If a provider still reports overflow, drop one priority level and retry once (`CN-AI-0007`). Priorities and estimates are proposals, tested by `AST-02` and `SPK-07`.
 
-**Encrypted notebooks.** Sending an end-to-end encrypted notebook's content to a hosted provider needs an opt-in per notebook (SEC-A05, `CN-AI-0013`). A local model does not need it.
+**Encrypted notebooks.** Sending an end-to-end encrypted notebook's content to a hosted provider needs an opt-in per notebook (SEC-A05, `CN-AI-0013`). A local model does not need it. **The opt-in is enforced in `-tools`, for every surface including MCP and the CLI, not only here** ([63](63-AGENT-TOOLS-AND-MCP.md)). Context selection reads through the same check, so with no opt-in neither the pack nor any tool call yields content, and tools return `CN-TOL-0016`, which the panel explains as `CN-AI-0013`. "Local" means the sidecar this shell supervises, as Rust reports it. A custom or loopback endpoint counts as hosted.
 
 **Admin policy.** A host may supply a policy that disables AI or allow-lists providers and models (ENT-R05). The panel obeys it, and a refused provider shows that the workspace does not allow it. Use is auditable without note text (ENT-R06).
 
@@ -212,11 +253,11 @@ send → provider.chat
 | Unknown tool | `CN-TOL-0001`, same path. This is a hallucinated call, not a crash |
 | Provider without tool support | `tools: "none"`: only the context pack, and the panel states that it can't change anything or look further |
 
-**Approval** follows ADR-013 and is defined in [63](63-AGENT-TOOLS-AND-MCP.md). The card shows the real change, computed from the validated arguments, never the model's words, and is shown in the interface language.
+**Approval** follows ADR-013 and is defined in [63](63-AGENT-TOOLS-AND-MCP.md). The card shows the real change, computed from the validated arguments, never the model's words, and is shown in the interface language. It also shows who can read the target and which pages were read in this turn, both derived by the engine. A write that could move text to a wider audience gets a distinct warning and a full-preview review.
 
 ### Cancellation and streaming
 
-**Stop** aborts through `AbortSignal`. A pending approval card resolves as declined, as in the prototype. A write never starts after the signal fires. **A write already committed stays,** remains visible in the conversation, and can be undone. On desktop, closing the connection should stop generation on `llama-server`. Whether it does is unverified, so `SPK-07` checks it, and if not, the shell restarts the process after a stop.
+**Stop** aborts through `AbortSignal`. A pending approval card resolves as declined, as in the prototype. A write never starts after the signal fires. **A write already committed stays,** remains visible in the conversation, and can be undone. On desktop, closing the connection should stop generation on `llama-server`. Whether it does is unverified, so `SPK-07` checks it, and if not, the shell stops the process after a Stop, and the next request starts it through the full check.
 
 **Streaming.** A bounded SSE parser (`AST-02`), with line and total limits from below. Painting happens at most once per frame. A provider without streaming gets the whole reply at once, with a working indicator. A broken stream keeps its partial text, marked as cut short (`CN-AI-0011`), and that partial text is not sent back as if complete. No text reaches `innerHTML`. The stream work must keep PERF-01 for typing in the note beside it, which `AST-01` tests.
 
@@ -251,21 +292,22 @@ Each adapter maps to one code. The message comes from the catalogue ([50](50-INT
 | Stop pressed | `CN-AI-0010` | Stopped |
 | Stream ended early | `CN-AI-0011` | Partial reply, marked as cut short |
 | Provider refusal or content filter | `CN-AI-0012` | The provider declined |
-| Encrypted notebook, no opt-in | `CN-AI-0013` | Explains, and offers opt-in or a local model |
+| Encrypted notebook, no opt-in (refused in `-tools` as `CN-TOL-0016`) | `CN-AI-0013` | Explains, and offers opt-in or a local model |
 | Tools unsupported | `CN-AI-0014` | Continue without tools, stated in the panel |
 | 5xx | `CN-AI-0015` | The provider has a problem. Try again |
 | CSP blocked the endpoint | `CN-AI-0016` | Reload to apply the new provider |
 | Workspace policy refuses | `CN-AI-0017` | The workspace does not allow this provider |
 | Idle stream timeout | `CN-AI-0018` | No reply in time. Proposed 120 seconds, and longer while a local model loads |
 | Not enough disk | `CN-MDL-0001` | Names the space needed |
-| Hash mismatch | `CN-MDL-0002` | File deleted, and offered again |
+| Hash mismatch, after download or before a start | `CN-MDL-0002` | File deleted, and offered again. Nothing runs |
 | Download failed or server refused a range | `CN-MDL-0003` | Retry, with restart from the start if needed |
 | Not a valid GGUF | `CN-MDL-0004` | Refused |
 | Catalogue entry does not fit this machine | `CN-MDL-0005` | Warned with the measured need, and the person may continue |
 | Local server failed to start | `CN-MDL-0006` | Shows why, offers a smaller model |
-| Local server crashed | `CN-MDL-0007` | Offers one restart |
+| Local server crashed | `CN-MDL-0007` | Offers Start. Never restarts by itself. Third failure in 10 minutes: `CN-DSK-0011` |
 | Port check failed: the server accepted a request it should refuse | `CN-MDL-0008` | **Stops the server.** Local assistant disabled |
 | Ollama or external server not found | `CN-MDL-0009` | Nothing changes |
+| Another program answered on the model's port | `CN-MDL-0010` | Nothing was sent. The server stops, and Start tries again on a new port |
 
 ### Cost display
 
@@ -278,13 +320,13 @@ Per reply and per conversation: tokens in and out, from the provider's usage rep
 | Layer | Control |
 | --- | --- |
 | Framing | Tool results and the context pack are labelled data, with a per-turn delimiter. It helps. **It is not a boundary** |
-| Writes | Every write needs a person, and the card shows the real change. A tricked model can only ask |
-| Reach | The closed tool set has no network tool, and no tool can read keys, settings or conversations (SEC-A01) |
-| Exfiltration | Replies are inert text (SEC-A03). The provider already sees what the assistant read, which is stated in the panel |
+| Writes | Every write needs a person, and the card shows the real change. A tricked model cannot write alone. **But what it asks for can itself be exfiltration:** an approved write can copy private text to a page other people read (SEC-A08). So the card shows the target's audience and the sources read this turn, both engine-derived, and a possible widening gets a distinct warning and full-preview review ([63](63-AGENT-TOOLS-AND-MCP.md)). This reduces the risk and cannot remove it |
+| Reach | The closed tool set has no network tool, and no tool can read keys, settings or conversations (SEC-A01). A shared page is still a way out, as above |
+| Exfiltration | Replies are inert text (SEC-A03). The provider already sees what the assistant read, which is stated in the panel. An MCP client is a different case: it has its own tools, and we do not control them (SEC-M04, [63](63-AGENT-TOOLS-AND-MCP.md)) |
 | Scope | No write without a request in this conversation is a rule to the model. Enforcement is the card |
 | Test | `AST-05`: a fixture suite in several languages, including instructions in tool results, in titles, hidden in Unicode tags and in imported HTML. The gate is **no unapproved write in any fixture**, not "the model ignored it" |
 
-**What stays possible, stated plainly.** Injected text can make a reply misleading, and can ask for a harmful write that a tired person approves (SEC-A02). A person told "this is safe" by a compromised assistant is not protected by any of this. Product text must not claim injection is solved.
+**What stays possible, stated plainly.** Injected text can make a reply misleading, and can ask for a harmful write that a tired person approves (SEC-A02), including one that copies private text somewhere others can read it (SEC-A08). A person told "this is safe" by a compromised assistant is not protected by any of this. Product text must not claim injection is solved.
 
 ### Risk: small models may call tools poorly
 
@@ -318,7 +360,12 @@ Failure modes are in Error mapping above. In every one, notes are unaffected and
 | Ollama as the only local route | Rejected | A separate install, which is a poor first run. Detected if present |
 | WebGPU or wasm chat model in the browser | Deferred | Owner instruction 7 gives web the user's provider. Not evaluated |
 | "Allow all writes for this session" | Rejected for version 1 | Removes the only hard control. Revisit only with evidence of fatigue |
-| Encrypting web keys with a passphrase | Rejected as a default | Would add friction. A session-only key, not stored at all, is a simpler later option |
+| Encrypting web keys with a passphrase | Rejected | Would add friction, and a script able to use the store can use the key. The default is now a session-only key, not stored at all |
+| Treating the `localStorage` CSP as key protection | Rejected | The origin it reads is writable by the script it would defend against (SEC-W07) |
+| A separate-origin connector page | To study | Stronger than anything else here on the web, with unknown costs. See above |
+| Sidecar relying on process separation alone | Rejected | A separate process has this person's rights. See OS sandbox above |
+| Automatic restart of a crashed model | Rejected | Repeats a parser bug or a memory failure. One rule: the person starts it |
+| A URL as a custom model source | Rejected | Local files only. A URL from a settings form is what an injected script would supply |
 | Price table | Rejected | Goes stale, misleads |
 | Parsing tool calls from free text for weak models | Rejected | Note text could become a tool call, which is an injection route |
 | Translating the system prompt | Deferred | `SPK-07` measures whether it helps. One text is simpler to review |
@@ -333,7 +380,9 @@ Decides ADR-016 and `DEC-10`. Waits on `DEC-07` for Windows.
 
 | Check | Pass (proposed) | Row |
 | --- | --- | --- |
-| Download | Resume after a killed process, and a flipped byte refused | `DSK-02` |
+| Download | Resume after a killed process, and a flipped byte refused, both before rename and before a later start | `DSK-02` |
+| OS sandbox, per platform | Chosen mechanism named. The child cannot read a seeded file beside the notebooks or connect outward, and the shell still reaches it. GPU build works, or the loss is recorded. Where no mechanism works, recorded, and the notice is shown | `DSK-03`, SEC-L04 |
+| Port: squatter | A program bound first, or answering in the child's place, receives a nonce and no key or prompt. How the challenge is provided is recorded, with its cost | `DSK-03`, SEC-L06 |
 | Port: another origin | A request with a foreign `Origin` is refused | `DSK-03`, SEC-L01 |
 | Port: no key, wrong key | Refused | SEC-L02 |
 | Port: bound address | Unreachable from another machine on the network | SEC-L01 |
@@ -358,18 +407,21 @@ Decides ADR-016 and `DEC-10`. Waits on `DEC-07` for Windows.
 | Panel interaction tests, Arabic included; PERF-01 while streaming | `AST-01` |
 | Contract tests: every adapter against fake and recorded streams, including malformed streams and every row in Error mapping | `AST-02` |
 | A seeded key is absent from export, mirror, sync, logs and tool results | `AST-03`, SEC-A06 |
-| CSP blocks a request to any other origin, in Chrome, Safari and Firefox, and changes with the provider | `AST-03`, SEC-W02 |
+| A key with "Remember" off is in no browser storage after a session. "Remember" is off until chosen, and its warning shows | `AST-03`, SEC-W07 |
+| With the meta tag in place, a plain request to any other origin is blocked, in Chrome, Safari and Firefox, and the tag changes with the provider. Each row of the CSP table has a case. **This shows the policy works as written, and is not evidence that keys are protected:** a companion test writes `localStorage` and shows the policy widening on reload, to keep that stated | `AST-03`, SEC-W02 |
+| On desktop, `provider_bind` declined leaves the old binding. A key goes only to its own origin, through a redirect too | `DSK-03`, SEC-W06 |
+| With no opt-in on an encrypted notebook, the context pack holds no content and every tool refuses, on each surface | `TOOL-02`, SEC-A05 |
 | AI off: a scripted session makes no network request | `AST-03`, PR-6 |
 | Injection suite: no unapproved write | `AST-05`, SEC-A01 |
 | Replies with image syntax and HTML cause no fetch and no element | `AST-05`, SEC-A03 |
 | Conversations are absent from export, mirror and sync, by test | `AST-01` |
-| Hash failure refused, resume works | `DSK-02` |
-| Cross-origin request refused against the shipped server | `DSK-03` |
+| Hash failure refused before rename and before each start, resume works. Custom model has no URL route | `DSK-02` |
+| Cross-origin request refused against the shipped server. A crash causes no automatic restart | `DSK-03` |
 
 ## ADRs
 
-ADR-012, ADR-013, ADR-016, ADR-027. Reads ADR-014, ADR-015, ADR-023. The home for the loop and the CSP mechanism need decisions recorded under the rows below.
+ADR-012, ADR-013, ADR-016, ADR-027. Reads ADR-014, ADR-015, ADR-023. The home for the loop and the CSP mechanism need decisions recorded under the rows below. The connector page has a row proposed, with no id yet.
 
 ## Tracker ids
 
-`SPK-07`, `AST-01`, `AST-02`, `AST-03`, `AST-04`, `AST-05`, `DSK-02`, `DSK-03`, `DSK-04`, `DEC-03`, `DEC-07`, `DEC-09`, `DEC-10`, `PROTO-02`. Proposed: `FND-60`, `FND-61`, `FND-65`, `FND-66`, `FND-67`, `FND-73`.
+`SPK-07`, `AST-01`, `AST-02`, `AST-03`, `AST-04`, `AST-05`, `DSK-02`, `DSK-03`, `DSK-04`, `TOOL-02`, `DEC-03`, `DEC-07`, `DEC-09`, `DEC-10`, `PROTO-02`. Proposed: `FND-21`, `FND-60`, `FND-61`, `FND-65`, `FND-66`, `FND-67`, `FND-73`.

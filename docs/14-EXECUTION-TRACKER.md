@@ -30,9 +30,11 @@
 | DOC-005 | Roadmap, phases, tracker, ADRs | Done | P0 | [06](06-ROADMAP-AND-DELIVERY.md), [05](05-PHASES-AND-TASKS.md), this page, [08](08-ADR-REGISTER.md) | `check-docs.py` |
 | DOC-006 | Project files | Done | P1 | README, AGENTS, CLAUDE, CONTRIBUTING, SECURITY, GOVERNANCE, CODE_OF_CONDUCT, NOTICE, CHANGELOG | `check-docs.py` |
 | DOC-007 | Document consistency gate | Done | P1 | `tools/check-docs.py`: links, tracker ids, index, ADR references, error codes, banned claims. Seeded violations were seen failing | `check-docs.py --selftest` |
-| DOC-008 | Independent review of the design set | In progress | P1 | Owner agreed, 2026-11-07. Fresh readers audit for contradictions and unstated assumptions | Findings dispositioned |
+| DOC-008 | Independent review of the design set | Done | P1 | Two fresh readers found 30 defects, 7 of them P0. Their quotes were checked against the text, and all were real. Fixes are `REV-*` below. A second pass over the fixes is `DOC-009` | Every finding dispositioned |
+| DOC-009 | Second review, of the fixes themselves | Open | P1 | The corrected designs have not been reviewed afresh | Findings dispositioned |
 | PROTO-01 | Clickable prototype | Done | P1 | [Prototype](prototypes/casualnote-prototype.html). Blocks, databases, canvas, graph, assistant, settings, six interface languages. Runs in a browser with no Rust | Scripted checks in Chrome, 2026-11-07. Hand dragging not tested |
 | PROTO-02 | Prototype assistant against the live model | Open | P2 | Tested only with a stand-in model | Owner tries it |
+| PROTO-04 | Prototype export still writes `canvas.ink` | Open | P3 | The package format moved ink to `ink/`. The sample fixture was converted. The throwaway prototype was not | Prototype retired or updated |
 | PROTO-03 | Prototype translations reviewed | Open | P2 | Drafts by the design author, not native-reviewed | Native review |
 | PKG-01 | Package format, version 1 draft | Done | P0 | [36](36-EXPORT-FORMAT.md), `schemas/cnotepack-1.schema.json` | Sample package passes schema and reader |
 | PKG-02 | Standalone reader | Done | P0 | `tools/cnotepack.py`, standard library only | `tools/test_cnotepack.py`: 24 tests. Path and hash checks removed and tests seen red. Byte-flip sweep first failed on raw crashes, then fixed |
@@ -43,14 +45,14 @@
 | ID | Title | St | Sev | Mechanism | Gate |
 | --- | --- | --- | --- | --- | --- |
 | GOV-01 | `git init`, hooks, commit rules | Done | P0 | `.githooks/pre-commit` runs `check-docs.py` and the reader tests. `.githooks/commit-msg` requires Conventional Commits. Enable with `git config core.hooksPath .githooks` | A broken doc and a bad message were each seen refused |
-| GOV-02 | Cargo workspace, toolchain, lints | Open | P0 | [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) | `cargo check` on both targets |
+| GOV-02 | Cargo workspace, toolchain, lints | Done | P0 | Cargo workspace, pinned toolchain, lints. Builds to native and wasm32 | `cargo check` on both targets |
 | GOV-03 | CI on three platforms | Blocked | P0 | Waits on `DEC-12`: no remote exists. [15](15-CI-AND-RELEASE-GATES.md) | Seeded violation fails each job |
 | GOV-04 | Crate dependency gate | Open | P0 | `check-crate-deps.py`: layer rules, only `-merge` names `loro` | Seeded edge fails |
 | GOV-05 | Licence gate | Open | P0 | `cargo deny`, weights and fonts list | Seeded GPL crate fails |
 | GOV-06 | Host-seam gate | Open | P1 | Copied from OpenCalc's `check-host-seams.py` | Seeded `cfg` fails |
 | GOV-07 | Fuzz workspace | Open | P0 | Separate workspace, pinned nightly | One target runs |
 | SPK-01 | Merge: does Loro survive years of notes? | Open | P0 | 5-year, 3-device simulated history, including 90 days offline, and real notes in the launch languages. Decides ADR-005, ADR-006, ADR-010 | Pass and fail in [24](24-OPERATIONS-AND-MERGE.md) |
-| SPK-02 | Editor: can DOM editing be op-driven and fast? | Open | P0 | 5,000-block page, Chrome, Safari, Firefox, input methods, right-to-left, screen reader. Repeated in desktop webviews (WKWebView, WebView2, WebKitGTK) before Phase 6. Decides ADR-007, ADR-025, ADR-028 | Pass and fail in [42](42-EDITOR-AND-RENDERING.md) |
+| SPK-02 | Editor: can DOM editing be op-driven and fast? | Open | P0 | 5,000-block page, Chrome, Safari, Firefox, input methods, right-to-left, screen reader. Includes desktop webviews and the Tauri bridge: WKWebView locally, WebKitGTK and WebView2 through CI where possible. Decides ADR-007, ADR-025, ADR-028 | Pass and fail in [42](42-EDITOR-AND-RENDERING.md) |
 
 ## Later prototypes
 
@@ -66,14 +68,14 @@
 
 | ID | Title | St | Sev | Mechanism | Gate |
 | --- | --- | --- | --- | --- | --- |
-| MOD-01 | `-model` types and invariants | Open | P0 | [22](22-DATA-MODEL.md) | Property tests |
+| MOD-01 | `-model` types and invariants | In progress | P0 | Pages, blocks, runs and marks in `casual-note-model`. Databases, canvas and links remain | Property tests |
 | MOD-02 | Schema repair as a pure projection | Open | P0 | Repairs never write back | Generated invalid states repair the same way on every replica |
-| OPS-01 | Closed op set | Open | P0 | [24](24-OPERATIONS-AND-MERGE.md) | Every op has a validation test |
-| OPS-02 | Undo with inverses over merged state | Open | P0 | Local undo only | Generated concurrent undo tests |
-| MRG-01 | `-merge` adapter over Loro | Blocked | P0 | Waits on `SPK-01` | Only crate naming `loro` |
-| MRG-02 | Guarded CRDT import | Open | P0 | Size limits, verify on load | Hostile updates refused, none panic |
+| OPS-01 | Closed op set | In progress | P0 | 11 ops with inverses in `casual-note-ops`, tested. Text ops use UTF-16 offsets, not anchors yet (ADR-031 remains). Databases and canvas ops remain | Every op has a validation test |
+| OPS-02 | Undo with inverses over merged state | In progress | P0 | Undo replays inverses. Concurrent-undo cases not tested | Generated concurrent undo tests |
+| MRG-01 | `-merge` adapter over Loro | In progress | P0 | `casual-note-merge` over Loro 1.17.1, one document per page plus a tree. Three-device convergence tested. `SPK-01` still not run | Only crate naming `loro` |
+| MRG-02 | Guarded CRDT import | In progress | P0 | Bounded container, byte-flip test. Size limits and panic isolation remain | Hostile updates refused, none panic |
 | MRG-03 | Overlap detection for merge review | Open | P1 | [24](24-OPERATIONS-AND-MERGE.md) | Labelled histories |
-| STO-01 | Durable log with fsync before ack | Open | P0 | [23](23-STORAGE-FORMAT.md) | Crash suite |
+| STO-01 | Durable log with fsync before ack | In progress | P0 | **Stopgap:** whole snapshots in IndexedDB, with "saved" shown only after commit. The log in docs/23 remains | Crash suite |
 | STO-02 | Snapshots and compaction | Open | P0 | | Rebuild equals original |
 | STO-03 | Host I/O seam, native and OPFS | Open | P0 | | Same bytes on both |
 | STO-04 | Readable mirror | Open | P1 | One-way, regenerated | Deleting it loses nothing |
@@ -87,16 +89,17 @@
 
 | ID | Title | St | Sev | Mechanism | Gate |
 | --- | --- | --- | --- | --- | --- |
-| WEB-01 | `-wasm` bridge | Open | P0 | | Same results as native |
-| WEB-02 | App shell: sidebar, tabs, panels | Open | P0 | [47](47-UX-AND-FEATURE-MAP.md) | Keyboard and screen reader pass |
-| WEB-03 | Block editor on the real DOM | Blocked | P0 | Waits on `SPK-02` | QR-1 |
-| WEB-04 | Slash menu, Markdown shortcuts, formatting | Open | P1 | | Interaction tests |
+| WEB-01 | `-wasm` bridge | Done | P0 | `casual-note-wasm`, 2.46 MB wasm, 823 KB gzipped, unoptimised | Same results as native |
+| WEB-02 | App shell: sidebar, tabs, panels | In progress | P0 | Sidebar, tabs, outline, settings. Real browser test, no accessibility audit yet | Keyboard and screen reader pass |
+| WEB-03 | Block editor on the real DOM | In progress | P0 | Op-driven DOM editing, including composition handling. Not measured against QR-1, and real input methods not tested (`SPK-02`) | QR-1 |
+| WEB-04 | Slash menu, Markdown shortcuts, formatting | In progress | P1 | Slash menu, Markdown shortcuts, marks work. Links remain | Interaction tests |
 | WEB-05 | Page links, backlinks, outline, tags | Open | P1 | | Interaction tests |
 | WEB-06 | Service worker, offline start | Open | P1 | | Loads with the network off |
+| FIL-01 | Attachments: chunks, resume, content hash. Moved from Phase 4, since paste and canvas need it | Open | P0 | [23](23-STORAGE-FORMAT.md) | Resume after injected failure |
 | DB-01 | Databases: model and operations | Open | P0 | [22](22-DATA-MODEL.md) | Merge tests |
 | DB-02 | Table and board views | Open | P1 | | Interaction tests |
-| I18N-01 | Message catalogue with ICU MessageFormat | Open | P0 | [50](50-INTERNATIONALIZATION.md) | Pseudo-locale finds no raw string |
-| I18N-02 | Logical CSS, right-to-left | Open | P0 | | CSS gate refuses physical properties. Arabic run passes |
+| I18N-01 | Message catalogue with ICU MessageFormat | In progress | P0 | Six interface languages from a simple table, not ICU MessageFormat yet. Drafts, unreviewed | Pseudo-locale finds no raw string |
+| I18N-02 | Logical CSS, right-to-left | In progress | P0 | Logical CSS, Arabic mirrors. No gate yet | CSS gate refuses physical properties. Arabic run passes |
 | I18N-03 | Input-method support | Open | P0 | | Composition tests in Chinese, Japanese, Korean |
 | I18N-04 | Fonts by script | Open | P1 | | Every launch script renders |
 | I18N-05 | Translation workflow and native review | Open | P1 | | A language is called supported only after review |
@@ -125,7 +128,6 @@
 | GRF-01 | Derived graph | Open | P1 | [61](61-KNOWLEDGE-GRAPH.md) | Golden graphs |
 | GRF-02 | Graph view and local graph | Open | P1 | | Interaction tests |
 | BLK-01 | Embedded pages | Open | P2 | | Cycles refused |
-| FIL-01 | Attachments: chunks, resume, content hash | Open | P0 | [23](23-STORAGE-FORMAT.md) | Resume after injected failure |
 
 ## Phase 5 — Assistant and agents
 
@@ -151,7 +153,7 @@
 | DSK-04 | Signing and updates | Open | P0 | | Signed installers |
 | IMP-01 | Markdown and HTML import | Open | P0 | [37](37-IMPORT-FORMATS.md) | Report names anything lost |
 | IMP-02 | Evernote import | Open | P1 | | Fixtures, written from public docs only |
-| REL-01 | First public release checklist | Blocked | P0 | Waits on `DEC-01`, `DEC-08` | All six promises green |
+| REL-01 | First public release checklist | Blocked | P0 | Waits on `DEC-08` | Every promise that applies to a local-only release is green |
 
 ## Phase 7 — Sync
 
@@ -189,6 +191,43 @@
 | HWR-01 | Handwriting recognition | Open | P3 | No good permissive option found | Re-survey before starting |
 | PKG-07 | Encrypted packages | Open | P2 | [36](36-EXPORT-FORMAT.md) open question | Design note first |
 
+## Review findings
+
+From `DOC-008`. **Done means the design was corrected and the documents agree. No code proves any of this yet,** so each still needs its test when built.
+
+| ID | Title | St | Sev | Mechanism | Gate |
+| --- | --- | --- | --- | --- | --- |
+| REV-01 | Stale base could discard typed text | Done | P0 | Ops address by anchors, ADR-031. 24, 42 | Test when built |
+| REV-02 | Phase 6 and 7 formed a cycle over the promises | Done | P0 | First release scoped to local promises. 01, 06, 15 | Test when built |
+| REV-03 | Desktop IPC bypassed the CSP | Done | P0 | Native confirmation, keys bound to origin, ADR-033, SEC-W06. 44, 62 | Test when built |
+| REV-04 | A crash during import quarantined good segments | Done | P0 | Attempt count; own segments never auto-quarantined. 23, 24, 56 | Test when built |
+| REV-05 | Forks assumed the CRDT merges same-peer branches | Done | P0 | Fresh peer per open, ADR-030. 23, 56 | Test when built |
+| REV-06 | Moving a notebook stranded saved edits | Done | P0 | Old id sealed and republished. 23 | Test when built |
+| REV-07 | Purge destroyed unseen offline edits | Done | P0 | Purge blocked by concurrent edits. 24, 23 | Test when built |
+| REV-08 | A separate process contained nothing | Done | P1 | OS sandbox, nonce on the port. SEC-L04, SEC-L06. 44, 62 | Test when built |
+| REV-09 | Partial-download hash could be bypassed | Done | P1 | Full hash before install and start. 44, 62 | Test when built |
+| REV-10 | Web CSP read attacker-writable input | Done | P1 | Not treated as a control. Session-only keys. SEC-W07. 62 | Test when built |
+| REV-11 | Composition broke on Korean and selections | Done | P1 | Snapshot at compositionend; to confirm in `SPK-02`. 42 | Test when built |
+| REV-12 | Phase 3 depended on Phase 4; paste needed `FIL-01` | Done | P1 | `FIL-01` moved to Phase 2, `SPK-03` uses a harness. 06, 14 | Test when built |
+| REV-13 | Desktop typing path tested too late | Done | P1 | Phase 0 exit. 06, 42 | Test when built |
+| REV-14 | Encrypted notebook opt-in could not be tested and had a bypass | Done | P1 | Enforced in `-tools`, Phase 7 gate. 62, 63, 07 | Test when built |
+| REV-15 | Approved write could copy private text to a shared page | Done | P1 | Audience and sources on the card, SEC-A08. **Reduced, not removed.** 62, 63 | Test when built |
+| REV-16 | Offline cell edits vanished with a removed column | Done | P1 | Flagged, exported hidden, RestoreColumn. 22, 24 | Test when built |
+| REV-17 | Damaged segments stranded later edits | Done | P1 | Good-prefix copy sealed, peer rotated. 23, 56 | Test when built |
+| REV-18 | Quarantine had no exit | Done | P1 | Per-document outcome, acks report rejects, restored copy. 56 | Test when built |
+| REV-19 | Two incompatible segment models | Done | P1 | One mapping specified. 23, 56 | Test when built |
+| REV-20 | State hash could not be computed as defined | Done | P1 | Per-document hash in `-model`. 24, 23 | Test when built |
+| REV-21 | Key rotation did not stop forged writes | Done | P1 | Per-device cutoff, SEC-S08. 56 | Test when built |
+| REV-22 | E2EE document ids changed on rotation | Done | P1 | Stable key. 57 | Test when built |
+| REV-23 | Merge bookkeeping triggered permission refusal | Done | P1 | Added to the matrix. 57 | Test when built |
+| REV-24 | Server ids were global | Done | P1 | Keyed by workspace. 57 | Test when built |
+| REV-25 | Valid notes could not be exported or re-read | Done | P1 | Ink moved to `ink/`, entry limit raised, ADR-032. 36, schema, reader, prototype, fixture | Test when built |
+| REV-26 | MCP read exfiltration had no threat row | Done | P2 | SEC-M04. **Not fully preventable.** 63, 07 | Test when built |
+| REV-27 | CSP blocked required features, and policies differed | Done | P2 | One table in 62. 42, 57 | Test when built |
+| REV-28 | Web fonts could fetch because of note content | Done | P2 | SEC-W08. 50 | Test when built |
+| REV-29 | Gates were not wired | Done | P2 | `check-secrets.py` in `ai-safety`, Phase 5 exit, SEC-F10 test. 15, 06, 07 | Test when built |
+| REV-30 | Resurrected blocks could not be operated on, and smaller merge items | Done | P2 | Implicit RestoreBlock, others. 22, 24, 57 | Test when built |
+
 ## Found during design
 
 Rows found by the low-level design authors are added here.
@@ -202,11 +241,11 @@ Rows found by the low-level design authors are added here.
 | FND-05 | Block nesting | Open | P1 | The schema is flat, while FR-02 lists can nest | Decision in 22 and 36 |
 | FND-06 | Attachment export limit | Open | P1 | 36 allows 2 GiB per entry, while a notebook blob may reach 1 TiB | Decision in 36 |
 | FND-07 | Splitting exports under browser quota | Open | P2 | A browser may be unable to hold one large package | Design note |
-| FND-20 | Loro import status and peer-id rule | Blocked | P0 | Waits on `SPK-01`. Sync depends on both | Confirmed against Loro |
+| FND-20 | Loro import status and peer-id behaviour | Blocked | P0 | Waits on `SPK-01`. Review found that same-peer branches may silently lose edits, so ADR-030 stops relying on this. Must be confirmed anyway | Confirmed against Loro |
 | FND-21 | Which storage each host can reach | Open | P1 | Browsers cannot reach every storage, because of CORS and file access | Table in 56, tested in `SPK-04` |
 | FND-22 | Home for native storage adapters | Open | P2 | They need network and files, so not `crates/` | Decision in 19 |
 | FND-23 | `classify_update` for remote updates | Open | P1 | Remote updates are not ops, but permissions need to classify them | Design in 24 and 57 |
-| FND-24 | IPC typing cost and webview input | Open | P1 | QR-1 is unknown through Tauri's bridge | `SPK-02` on desktop |
+| FND-24 | IPC typing cost and webview input | Open | P0 | QR-1 is unknown through Tauri's bridge. Now a Phase 0 exit criterion | `SPK-02` on desktop |
 | FND-25 | Signing identities | Open | P1 | `DSK-04` assumes Apple and Windows certificates exist | Owner obtains them |
 | FND-26 | Phase 8 sign-in | Open | P1 | ENT-R01 forbids a password store, so 57 proposes OIDC plus a first-run invite | Owner review |
 | FND-27 | Server load targets | Open | P2 | 30 has none | Rows added to 30 |
@@ -216,7 +255,7 @@ Rows found by the low-level design authors are added here.
 | FND-42 | Licence audit: PDF.js, PDF writer, skrifa, fonts, messageformat | Open | P1 | Not covered in 12. Phosphor's MIT licence is confirmed | Added to 12 |
 | FND-43 | Package gaps from the editor: links, image and file blocks, PDF items, direction, tilt, time | Open | P1 | Read with `FND-04` | Schema and reader updated |
 | FND-44 | Concurrent erase projection | Open | P1 | Erased ink can return when another device replaces the same stroke. 43 and 24 must agree | Merge test |
-| FND-45 | Contrast of `--faint` and small targets | Open | P0 | By calculation, `--faint` gives 2.84 to 4.03:1, and small targets fail QR-5. The prototype has this too | Tokens changed, contrast check in CI |
+| FND-45 | Contrast of `--faint` and small targets | Open | P0 | By calculation, `--faint` gives 2.84 to 4.03:1, and small targets fail QR-5. The prototype and web app both have this | Tokens changed, contrast check in CI |
 | FND-46 | ADRs for lazy wasm and PDF worker, reword ADR-007 | Done | P1 | ADR-028, ADR-029, ADR-007 | 08 updated |
 | FND-47 | Add `check-design` and `check-commands` gates | Open | P2 | To enforce 49 and 47 | Seeded violations fail |
 | FND-60 | Homes for the assistant loop, embedder and CLI | Open | P1 | 19 names none | Decision in 19 |
@@ -226,7 +265,7 @@ Rows found by the low-level design authors are added here.
 | FND-64 | Model gaps for the assistant | Open | P2 | Listed in 62 | Added to 22 |
 | FND-65 | Verify browser access per provider | Open | P1 | Only Anthropic and OpenRouter have been looked at, through secondary sources | Tested per provider |
 | FND-66 | Who hosts model files, against `DEC-03` | Open | P1 | Downloads come from third parties unless we mirror them | Owner decision |
-| FND-67 | CSP for a person-chosen endpoint | Open | P0 | A static app cannot send a per-person header. 62 has a proposal | Test with a seeded endpoint |
+| FND-67 | Web key protection | Open | P0 | Phase 5 exit criterion. A CSP read from `localStorage` is not a defence, as the review showed. Session-only keys by default; separate-origin connector to study | Stored-script test |
 | FND-68 | Simplified and Traditional Chinese search | Open | P1 | Not handled yet | Search test set |
 | FND-69 | MCP default and writer lock | Open | P1 | 63 commits unless `--read-only`. Owner may prefer read-only as the default | Owner decision |
 | FND-70 | Segmenter licence | Open | P1 | ICU4X or similar not yet audited | Added to 12 |

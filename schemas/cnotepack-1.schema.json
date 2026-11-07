@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/CasualOffice/opennote/schemas/cnotepack-1.schema.json",
   "title": "CasualNote Package, version 1",
-  "description": "Spec: docs/36-EXPORT-FORMAT.md. The manifest, page and database definitions are selected through $defs. x- prefixed fields are allowed anywhere and must be preserved.",
+  "description": "Spec: docs/36-EXPORT-FORMAT.md. The manifest, page and database definitions are selected through $defs. x- prefixed fields are allowed anywhere and must be preserved. Each line of ink/<page-id>.jsonl is one inkLine. A block type this version does not list is kept and reported, because a minor version may add one.",
   "$defs": {
     "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^/\\\\\\u0000-\\u001f]+$" },
     "nullableId": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
@@ -29,11 +29,20 @@
     "block": {
       "type": "object",
       "required": ["id", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "type": "string", "minLength": 1 }
+      },
+      "if": { "properties": { "type": { "enum": ["paragraph", "heading", "bulleted", "numbered", "todo", "quote", "callout", "code", "divider", "database", "embed"] } } },
+      "then": { "$ref": "#/$defs/knownBlock" }
+    },
+    "knownBlock": {
+      "type": "object",
       "patternProperties": { "^x-": true },
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "type": { "enum": ["paragraph", "heading", "bulleted", "numbered", "todo", "quote", "callout", "code", "divider", "database", "embed"] },
+        "type": { "type": "string" },
         "lang": { "$ref": "#/$defs/lang" },
         "content": { "$ref": "#/$defs/content" },
         "level": { "enum": [1, 2, 3] },
@@ -63,7 +72,7 @@
         "text": { "type": "string" }
       }
     },
-    "ink": {
+    "inkLine": {
       "oneOf": [
         {
           "type": "object", "required": ["id", "kind", "color", "width", "points"], "patternProperties": { "^x-": true }, "additionalProperties": false,
@@ -140,14 +149,14 @@
         "lang": { "$ref": "#/$defs/lang" },
         "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } },
         "canvas": {
-          "type": "object", "required": ["note", "items", "ink"], "patternProperties": { "^x-": true }, "additionalProperties": false,
+          "type": "object", "required": ["note", "items"], "patternProperties": { "^x-": true }, "additionalProperties": false,
           "properties": {
             "note": {
               "type": "object", "required": ["x", "y", "width"], "additionalProperties": false,
               "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number", "exclusiveMinimum": 0 } }
             },
             "items": { "type": "array", "items": { "$ref": "#/$defs/canvasItem" } },
-            "ink": { "type": "array", "items": { "$ref": "#/$defs/ink" } }
+            "inkFile": { "type": "string", "maxLength": 1024, "pattern": "^ink/.+\\.jsonl$" }
           }
         }
       },
@@ -174,7 +183,7 @@
           "type": "array",
           "items": {
             "type": "object", "required": ["id", "name", "type"], "additionalProperties": false, "patternProperties": { "^x-": true },
-            "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "type": { "enum": ["text", "date"] } }
+            "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "type": { "enum": ["text", "date"] }, "hidden": { "type": "boolean" } }
           }
         },
         "rows": {

@@ -195,12 +195,20 @@ Inference is **never written back.** The same attribute drives the browser's spe
 
 | Host | On screen | PDF and PNG |
 | --- | --- | --- |
-| Web | Geist bundled. CJK Noto slices by `unicode-range` from the app's own origin, as OpenCalc's docs/101 does, only when no OS font covers them. Arabic and Devanagari Noto bundled as files, loaded on use | Slices fetched from the same origin, by need |
+| Web | Geist, Arabic and Devanagari Noto precached with the app. CJK Noto slices by `unicode-range` as OpenCalc's docs/101 does, but **only if precached with the app. Otherwise system fonts** | From the precache. What is missing is named in the report, and nothing is fetched for it |
 | Desktop | Geist bundled. OS fonts for CJK, as OpenCalc's revised docs/101 found: inside the installer, slices added about 58 MB there. Arabic and Devanagari Noto bundled | Pack downloaded **on request**, never silently |
 
-**PR-6 and QR-6.** "With AI off, nothing leaves the device" must hold, so a desktop font download is an explicit step in Settings or at the point of export, with size shown. Without it, the export's report names every character it could not draw, per script, with a sample ([42](42-EDITOR-AND-RENDERING.md)). No silent fetch, ever. On the web, the origin that serves the app serves the fonts, and that also works air-gapped.
+**No font request is caused by note content (SEC-W08).** A request for a slice as a page renders tells whoever serves the app, or watches the traffic, which scripts a note holds, even from the app's own origin. So on the web:
 
-**Unknown until tested.** How well slices work with a font that arrives after first paint, and the reflow that causes. Measuring before a face arrives uses docs/101's stated em-width facts.
+- A font file is fetched only by the service worker's install step (`WEB-06`), along with the rest of the app, and the set fetched is the same whatever the notes hold.
+- An `@font-face` for a slice or a Noto face is declared only once the worker has confirmed that file is in the cache. Until then, including on a first visit and wherever the worker cannot run, the browser uses system fonts.
+- A person's language or a note's script never changes which files are requested.
+
+Whether CJK slices are precached at all depends on their size, which is unmeasured for the web. OpenCalc's figure of about 58 MB was for its installer. `I18N-04` decides, and if they are not, CJK on the web is system fonts only, and a machine with no CJK font shows boxes, which is then a stated limit.
+
+**PR-6 and QR-6.** "With AI off, nothing leaves the device" must hold, so a desktop font download is an explicit step in Settings or at the point of export, with size shown. It fetches a whole pack, whatever the page holds. Without it, the export's report names every character it could not draw, per script, with a sample ([42](42-EDITOR-AND-RENDERING.md)). No silent fetch, ever. On the web, the origin that serves the app serves the precache, and that also works air-gapped.
+
+**Unknown until tested.** How well slices work when the worker's cache becomes ready after first paint, and the reflow that causes. Measuring before a face arrives uses docs/101's stated em-width facts. The font-less test covers the fallback.
 
 **Licences.** Geist and Noto are, to this document's knowledge, under SIL OFL 1.1, **unverified for the exact files**. ADR-023's list does not name OFL, and ADR-027 takes fonts through their own review. `DEC-08` covers this.
 
@@ -319,7 +327,7 @@ Kept in `fixtures/i18n/<locale>/`. Each locale runs every push ([15](15-CI-AND-R
 | `zh-Hans` | Pinyin composition, including cancel and multi-segment. No word spaces in search. `【【` and `、` triggers |
 | `zh-Hant` | Zhuyin and cangjie composition. Glyph form check against `zh-Hans`. Locale detection from `zh-TW` |
 | `ja` | Kana-kanji composition with segment conversion, Enter to confirm. Kana, kanji and Latin mixed in search. `「「` trigger. Glyph form check |
-| `ko` | Syllable composition, including backspace within a syllable. Search across spacing. `keep-all` line breaks. NFD file names |
+| `ko` | Syllable composition, including backspace within a syllable, and `compositionend` and `compositionstart` firing together between syllables ([42](42-EDITOR-AND-RENDERING.md)). Search across spacing. `keep-all` line breaks. NFD file names |
 | `es`, `pt` | Dead keys; accent-insensitive search matches and accent-preserving storage; 40% expansion in controls |
 | `fr` | Dead keys; narrow no-break space in `Intl` numbers; plural of zero |
 | `de` | Long compounds in narrow controls; `ß` and case folding in search |
@@ -335,7 +343,7 @@ Automated composition drives Chrome through its DevTools protocol. Firefox and S
 | --- | --- |
 | A key is missing at runtime | English, logged. CI prevents this for released locales |
 | A catalogue fails to load | Falls back to bundled `en`. The interface never shows keys |
-| A font fails to load | System fallback. No invisible text, using `font-display: swap`. Boxes in PDF are named in the report |
+| A font fails to load, or was never precached | System fallback, with no request made for it. No invisible text, using `font-display: swap`. Boxes in PDF are named in the report |
 | A locale has no `Intl` data in an old webview | Falls back to `en` formatting, and it is a named limit |
 | A wrong script inferred for Han-only text | Glyph forms may be off, and it is fixed by setting a language on the block or page. Nothing in the data changes |
 | Reviewer not available for a language | It stays Draft. It is never relabelled to hit a date |
@@ -364,9 +372,11 @@ Automated composition drives Chrome through its DevTools protocol. Firefox and S
 | `check-i18n.py`: literals, missing keys, concatenation, em dashes, emoji, with seeded violations | Catalogue rules | `I18N-01` |
 | `check-css-logical.py` with a seeded violation | Logical CSS | `I18N-02` |
 | Arabic interaction and screenshot run | Right-to-left works | `I18N-02` |
-| Composition tests in Chinese, Japanese and Korean, with no writes during composition | Input methods | `I18N-03` |
+| Composition tests in Chinese, Japanese and Korean, with no writes during composition, including over a selection and across blocks | Input methods | `I18N-03` |
 | Each launch script renders on screen and in PDF, and text extracts back | Fonts | `I18N-04`, `RND-01` |
 | AI-off network capture shows no font fetch on desktop | PR-6 | `I18N-04` |
+| Web: after install, opening a page in each launch script makes no font request. The requests at install are identical whatever the workspace holds | SEC-W08 | `I18N-04` |
+| **Font-less test.** Web, with every font file blocked and the worker's cache empty: a page in each launch script makes no font request beyond the install step, and shows real text in system fonts, with no invisible text, no crash and no change to the data | SEC-W08 | `I18N-04` |
 | Status files: a released locale with `draft` or `stale` keys cannot be called Supported | Workflow | `I18N-05` |
 | Export under each interface language gives identical bytes | Independence | `PKG-05` |
 | Search set per launch language | Search | `SRCH-01` |
@@ -378,4 +388,4 @@ ADR-018 (multilingual first), ADR-015 (multilingual embeddings), ADR-025 (no bun
 
 ## Tracker ids
 
-`I18N-01`, `I18N-02`, `I18N-03`, `I18N-04`, `I18N-05`, `PROTO-01`, `PROTO-03`, `DEC-09`, `DEC-08`, `SRCH-01`, `SPK-02`, `SPK-07`, `AST-01`, `RND-01`, `PKG-05`, and `RISK-12` in [06](06-ROADMAP-AND-DELIVERY.md).
+`I18N-01`, `I18N-02`, `I18N-03`, `I18N-04`, `I18N-05`, `WEB-06`, `PROTO-01`, `PROTO-03`, `DEC-09`, `DEC-08`, `SRCH-01`, `SPK-02`, `SPK-07`, `AST-01`, `RND-01`, `PKG-05`, and `RISK-12` in [06](06-ROADMAP-AND-DELIVERY.md).

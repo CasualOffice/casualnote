@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'">
+<title>CasualNote</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div class="main">
+    <aside id="side" aria-label="Workspace">
+      <div class="ws">CasualNote</div>
+      <button class="nav" id="searchBtn"><span data-i="magnifying-glass"></span><span data-t="Search">Search</span><kbd>Ctrl K</kbd></button>
+      <button class="nav" id="newBtn"><span data-i="plus"></span><span data-t="New page">New page</span></button>
+      <button class="nav" id="settingsBtn"><span data-i="gear-six"></span><span data-t="Settings">Settings</span></button>
+      <div id="tree"></div>
+    </aside>
+    <section id="center">
+      <div id="tabs" role="tablist" aria-label="Open pages"></div>
+      <div id="paneWrap">
+        <div class="bar">
+          <button class="ibtn" id="menuBtn" aria-label="Show pages"><span data-i="list"></span></button>
+          <div class="crumbs" id="crumbs"></div>
+          <button class="ibtn" id="favBtn" aria-label="Favorite"></button>
+          <button class="ibtn" id="moreBtn" aria-label="More"><span data-i="dots-three"></span></button>
+          <button class="ibtn" id="rightBtn" aria-label="Toggle side panel"><span data-i="sidebar-simple"></span></button>
+        </div>
+        <div id="content"></div>
+      </div>
+    </section>
+    <aside id="right" aria-label="Page details">
+      <div id="rpDetails">
+        <div class="rp"><h4 data-t="Outline">Outline</h4><div id="outline"></div></div>
+      </div>
+    </aside>
+  </div>
+  <footer class="status">
+    <span class="proto" id="error"></span>
+    <span id="counts" class="counts"></span>
+    <span id="saved" role="status"></span>
+  </footer>
+</div>
+<div class="fmt" id="fmt" hidden>
+  <button data-f="bold" aria-label="Bold"><span data-i="text-b"></span></button>
+  <button data-f="italic" aria-label="Italic"><span data-i="text-italic"></span></button>
+  <button data-f="code" aria-label="Code"><span data-i="code"></span></button>
+  <button data-f="highlight" aria-label="Highlight"><span data-i="highlighter"></span></button>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

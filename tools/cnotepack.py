@@ -11,6 +11,7 @@ code from docs/36.
 """
 import hashlib
 import json
+import math
 import pathlib
 import re
 import stat
@@ -21,10 +22,12 @@ import zlib
 
 MIMETYPE = b"application/vnd.casualnote.package+zip"
 SUPPORTED_MAJOR = 1
-MAX_ENTRIES = 100_000
+MAX_ENTRIES = 1_000_000
 MAX_ENTRY_BYTES = 2 * 1024**3
 MAX_TOTAL_BYTES = 20 * 1024**3
 MAX_JSON_BYTES = 64 * 1024**2
+MAX_MANIFEST_BYTES = 512 * 1024**2
+MAX_INK_LINE_BYTES = 16 * 1024**2
 MAX_RATIO = 200
 RATIO_APPLIES_ABOVE = 1024**2
 MAX_DEPTH = 64
@@ -85,6 +88,33 @@ def hash_bounded(archive, info, budget):
                 raise Refused("CN-PKG-0007", f"{info.filename} expands more than {MAX_RATIO}:1")
 
 
+def lines_bounded(archive, info):
+    """Yield one line at a time, holding no more than one line and one read in memory."""
+    pending, size = bytearray(), 0
+    with archive.open(info) as stream:
+        while True:
+            chunk = stream.read(CHUNK)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_ENTRY_BYTES:
+                raise Refused("CN-PKG-0007", f"{info.filename} is over the entry limit")
+            if size > RATIO_APPLIES_ABOVE and size > max(info.compress_size, 1) * MAX_RATIO:
+                raise Refused("CN-PKG-0007", f"{info.filename} expands more than {MAX_RATIO}:1")
+            pending += chunk
+            start = 0
+            while (end := pending.find(b"\n", start)) != -1:
+                if end - start > MAX_INK_LINE_BYTES:
+                    raise Refused("CN-PKG-0007", f"{info.filename} has a line over {MAX_INK_LINE_BYTES} bytes")
+                yield bytes(pending[start:end])
+                start = end + 1
+            del pending[:start]
+            if len(pending) > MAX_INK_LINE_BYTES:
+                raise Refused("CN-PKG-0007", f"{info.filename} has a line over {MAX_INK_LINE_BYTES} bytes")
+    if pending:
+        raise Refused("CN-PKG-0010", f"{info.filename}: the last line has no line ending")
+
+
 def depth(value, level=1):
     if level > MAX_DEPTH:
         return level
@@ -105,7 +135,68 @@ def parse_json(data, name, code):
     return value
 
 
-def check_page(page, expected_id, name):
+def is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def is_point(value, size):
+    return isinstance(value, list) and len(value) == size and all(is_number(v) for v in value)
+
+
+def ink_line_problem(record):
+    """The inkLine definition in the schema, by hand, because the reader uses no validator."""
+    if not isinstance(record, dict) or not isinstance(record.get("id"), str) or not record["id"]:
+        return "needs an id"
+    kind = record.get("kind")
+    if kind in ("pen", "highlighter"):
+        allowed = {"id", "kind", "color", "width", "points"}
+        if not isinstance(record.get("color"), str):
+            return "needs a color"
+        if not is_number(record.get("width")) or record["width"] <= 0:
+            return "needs a width above 0"
+        points = record.get("points")
+        if not isinstance(points, list) or not all(is_point(p, 3) and 0 <= p[2] <= 1 for p in points):
+            return "points must be [x, y, pressure], with pressure from 0 to 1"
+    elif kind == "arrow":
+        allowed = {"id", "kind", "from", "to"}
+        if not is_point(record.get("from"), 2) or not is_point(record.get("to"), 2):
+            return "from and to must be [x, y]"
+    else:
+        return "unknown kind"
+    extra = [key for key in record if key not in allowed and not key.startswith("x-")]
+    return f"unexpected field {extra[0]!r}" if extra else None
+
+
+def check_ink_file(archive, info):
+    for number, line in enumerate(lines_bounded(archive, info), 1):
+        where = f"{info.filename} line {number}"
+        record = parse_json(line, where, "CN-PKG-0010")
+        problem = ink_line_problem(record)
+        if problem:
+            raise Refused("CN-PKG-0010", f"{where}: {problem}")
+
+
+def check_canvas(page, name, by_name, ink_named):
+    def fail(why):
+        raise Refused("CN-PKG-0010", f"{name}: {why}")
+    canvas = page.get("canvas")
+    if canvas is None:
+        return
+    if not isinstance(canvas, dict):
+        fail("canvas must be an object")
+    if "ink" in canvas:
+        fail("ink belongs in ink/<page-id>.jsonl, named by inkFile")
+    ink_file = canvas.get("inkFile")
+    if ink_file is None:
+        return
+    if ink_file != f"ink/{page['id']}.jsonl":
+        fail("inkFile must name this page's own file under ink/")
+    if ink_file not in by_name:
+        fail("inkFile names a file that is not in the package")
+    ink_named.add(ink_file)
+
+
+def check_page(page, expected_id, name, report):
     def fail(why):
         raise Refused("CN-PKG-0010", f"{name}: {why}")
     if not isinstance(page, dict):
@@ -119,13 +210,16 @@ def check_page(page, expected_id, name):
     if not isinstance(page.get("blocks"), list):
         fail("blocks must be a list")
     for block in page["blocks"]:
-        if not isinstance(block, dict) or block.get("type") not in BLOCK_TYPES or not isinstance(block.get("id"), str):
+        if not isinstance(block, dict) or not isinstance(block.get("type"), str) or not block["type"] or not isinstance(block.get("id"), str):
             fail("a block is malformed")
+        if block["type"] not in BLOCK_TYPES:
+            report.append(f"{name}: kept block {block['id']} of type {block['type']!r}, which this reader does not know")
+            continue
         if block["type"] in TEXT_BLOCKS and not isinstance(block.get("content"), list):
             fail(f"block {block['id']} has no content")
 
 
-def check_database(database, expected_id, name):
+def check_database(database, expected_id, name, report):
     def fail(why):
         raise Refused("CN-PKG-0010", f"{name}: {why}")
     if not isinstance(database, dict):
@@ -141,15 +235,18 @@ def check_database(database, expected_id, name):
 DAMAGE = (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError, UnicodeError, OSError, ValueError, OverflowError)
 
 
-def inspect(path):
-    """Verify everything and return (manifest, {path: info}, open archive)."""
+def inspect(path, report=None):
+    """Verify everything and return (manifest, {path: info}, open archive).
+
+    Anything kept without being understood, such as a newer block type, is added to report.
+    """
     try:
-        return _inspect(path)
+        return _inspect(path, [] if report is None else report)
     except DAMAGE as error:
         raise Refused("CN-PKG-0001", f"the file is damaged ({type(error).__name__})") from None
 
 
-def _inspect(path):
+def _inspect(path, report):
     archive = zipfile.ZipFile(path)
     entries = archive.infolist()
     if not entries:
@@ -178,7 +275,7 @@ def _inspect(path):
 
     if "manifest.json" not in by_name:
         raise Refused("CN-PKG-0002", "manifest.json is missing")
-    manifest = parse_json(read_bounded(archive, by_name["manifest.json"], MAX_JSON_BYTES), "manifest.json", "CN-PKG-0002")
+    manifest = parse_json(read_bounded(archive, by_name["manifest.json"], MAX_MANIFEST_BYTES), "manifest.json", "CN-PKG-0002")
     if not isinstance(manifest, dict) or manifest.get("format") != "casualnote.package":
         raise Refused("CN-PKG-0002", "this is not a CasualNote Package manifest")
     version = manifest.get("version")
@@ -207,12 +304,20 @@ def _inspect(path):
     if unlisted:
         raise Refused("CN-PKG-0009", f"not in the manifest: {sorted(unlisted)[0]}")
 
+    ink_named = set()
     for kind, check in (("pages", check_page), ("databases", check_database)):
         for item in manifest[kind]:
             if not isinstance(item, dict) or item.get("path") not in by_name or not isinstance(item.get("id"), str):
                 raise Refused("CN-PKG-0002", f"a manifest {kind} entry is malformed")
             value = parse_json(read_bounded(archive, by_name[item["path"]], MAX_JSON_BYTES), item["path"], "CN-PKG-0010")
-            check(value, item["id"], item["path"])
+            check(value, item["id"], item["path"], report)
+            if kind == "pages":
+                check_canvas(value, item["path"], by_name, ink_named)
+    for name in sorted(by_name):
+        if name.startswith("ink/"):
+            if name not in ink_named:
+                raise Refused("CN-PKG-0010", f"{name}: no page names this ink file")
+            check_ink_file(archive, by_name[name])
     return manifest, by_name, archive
 
 
@@ -239,12 +344,15 @@ def main(argv):
             manifest = extract(argv[2], argv[3])
             print(f"Extracted {len(manifest['files'])} files to {argv[3]}. Read the notes under readable/.")
             return 0
-        manifest, _, _ = inspect(argv[2])
+        report = []
+        manifest, _, _ = inspect(argv[2], report)
     except Refused as refusal:
         print(f"Refused. {refusal}", file=sys.stderr)
         return 1
     if argv[1] == "verify":
         print(f"OK. CasualNote Package {manifest['version']}: {len(manifest['pages'])} pages, {len(manifest['databases'])} databases, {len(manifest['files'])} files, all hashes match.")
+        for note in report:
+            print(f"Note. {note}")
     else:
         for page in manifest["pages"]:
             print(page.get("readable") or page["path"])

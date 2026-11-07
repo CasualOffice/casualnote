@@ -112,7 +112,7 @@ pub struct UpdateClassification {
 | --- | --- | --- |
 | 1 | Frame size, per-connection and per-workspace rate | `CN-SRV-0006`, `CN-SRV-0007` |
 | 2 | Session still valid, membership current | `CN-SRV-0002` |
-| 3 | Duplicate check on `(doc, device, client_seq)`. If found and bytes match, return the original `Committed` | Different bytes: `CN-SRV-0014` |
+| 3 | Duplicate check on `(workspace, doc, device, client_seq)`. If found and bytes match, return the original `Committed` | Different bytes: `CN-SRV-0014` |
 | 4 | `classify_update` on a blocking thread, panic isolated | Hostile: `CN-SRV-0008`. Missing dependencies: `CN-SRV-0015`, client catches up first |
 | 5 | Every class allowed for this person's effective access. `unknown` is always refused | `CN-SRV-0003` |
 | 6 | In one transaction: check `grants_version` unchanged, insert log row, advance head | `NotSaving`, `CN-SRV-0010` |
@@ -144,11 +144,15 @@ The most common path is someone losing edit access while offline: they come back
 | Database schema | No | No | Yes | Yes |
 | Attachment add | No | No | Yes | Yes |
 | Resolve merge review | No | No | Yes | Yes |
+| Merge bookkeeping: mark a review (`MarkReview`) | No | No | Yes | Yes |
+| Merge bookkeeping: write a checkpoint (`WriteCheckpoint`) | No | Only in the comment document | Yes | Yes |
 | Move or rename page | No | No | Yes, with Edit on source and destination parents | Yes |
 | Delete page, restore page | No | No | No | Yes |
 | Grant, share, lock | No | No | No | Yes |
 | Export (policy, ENT-R09) | Policy | Policy | Policy | Policy |
 | `unknown` | No | No | No | No |
+
+**Why bookkeeping has its own classes.** `MarkReview` and `WriteCheckpoint` are written by the engine ([24](24-OPERATIONS-AND-MERGE.md)), not by a person, and they travel in the same updates as edits. Unclassified, they would be `unknown`, so a device with Edit returning from offline would be refused for its own merge records and pushed into a restored copy. A forged marker costs a glance, since a review never blocks. A device below Edit has nothing of its own to merge, so its engine writes neither to the page, and shows any marker locally. This stops it publishing an update it would be refused for.
 
 **Granularity limits, stated plainly.**
 
@@ -166,7 +170,7 @@ The most common path is someone losing edit access while offline: they come back
 
 | Step | Managed | E2EE |
 | --- | --- | --- |
-| Doc id on the wire | Page id | `HMAC(NK, page id)`, so the server never learns page ids |
+| Doc id on the wire | Page id | `HMAC(DK, notebook id ‖ page id)`, so the server never learns page ids. DK is independent of epoch keys ([56](56-SYNC-DESIGN.md)), so a rotation does not change a document's id and strand its log |
 | Payload | CRDT update bytes | Sealed envelope using the [56](56-SYNC-DESIGN.md) format and key hierarchy |
 | Validation | `classify_update` | Size and rate only |
 | Presence payload | Cursor, name | Sealed cursor. Connection presence itself is visible |
@@ -186,14 +190,14 @@ The most common path is someone losing edit access while offline: they come back
 **E2EE compaction.** A client that holds the key writes a sealed checkpoint and offers it.
 
 ```
-POST /api/v1/docs/{doc}/checkpoints   { covers_cursor, parts, size }
+POST /api/v1/workspaces/{w}/docs/{doc}/checkpoints   { covers_cursor, parts, size }
 ```
 
 The server cannot check the content, so a broken or hostile client could offer garbage. Hence the same rule as [56](56-SYNC-DESIGN.md): the log below `covers_cursor` stays until **another device has reported the checkpoint verified**, or a single-device workspace's own read-back. The previous checkpoint is retained until then. If no client compacts, storage grows and the admin sees bytes per workspace, with no way to act on content.
 
 ### Transport: WebSocket
 
-`GET /api/v1/ws`, binary frames, CBOR, one socket per device multiplexing many documents. Limit: 2 MiB per frame (proposal). Larger updates use blobs or several frames. Browsers cannot set headers on a WebSocket, so the session token goes in the first frame and never in the URL, since URLs reach logs. The server closes a socket that has not sent `Hello` within 10 s, and it checks `Origin` on upgrade against a configured allow-list.
+`GET /api/v1/ws`, binary frames, CBOR, one socket per device multiplexing many documents of one workspace, named in `Hello`. So `doc` in a message means `(workspace, doc)`. Limit: 2 MiB per frame (proposal). A larger update uses several frames, as below. Browsers cannot set headers on a WebSocket, so the session token goes in the first frame and never in the URL, since URLs reach logs. The server closes a socket that has not sent `Hello` within 10 s, and it checks `Origin` on upgrade against a configured allow-list.
 
 **Client to server.**
 
@@ -202,9 +206,9 @@ The server cannot check the content, so a broken or hostile client could offer g
 | `Hello` | `protocol_min`, `protocol_max`, `session_token`, `workspace`, `device_id`, `resume_key` | First frame only |
 | `Subscribe` | `doc`, `have: { log_epoch, cursor }?` | `have` absent means start from the newest checkpoint |
 | `Unsubscribe` | `doc` | |
-| `Update` | `doc`, `client_seq`, `payload` | Must be durable locally first ([23](23-STORAGE-FORMAT.md)) |
+| `Update` | `doc`, `client_seq`, `part?: { index, total, sha256 }`, `payload` | Must be durable locally first ([23](23-STORAGE-FORMAT.md)) |
 | `Awareness` | `doc`, `payload` | Ephemeral, never stored |
-| `CursorAck` | `doc`, `cursor`, `verified_checkpoints?` | The device's durable position; feeds trimming |
+| `CursorAck` | `doc`, `cursor`, `verified_checkpoints?`, `rejected?: [{ cursor, code }]` | The device's durable position; feeds trimming. `rejected` means as in [56](56-SYNC-DESIGN.md), and a rejected update does not hold the cursor back |
 | `Ping` | `nonce` | Every 25 s (proposal) |
 
 **Server to client.**
@@ -213,16 +217,19 @@ The server cannot check the content, so a broken or hostile client could offer g
 | --- | --- | --- |
 | `Welcome` | `protocol`, `mode`, `member`, `limits`, `heartbeat`, `resumed` | |
 | `Subscribed` | `doc`, `log_epoch`, `head`, `access`, `checkpoint?` | `checkpoint` is a blob reference when needed |
-| `Catchup` | `doc`, `from`, `to`, `items`, `more` | Bounded batches |
+| `Catchup` | `doc`, `from`, `to`, `items`, `more` | Bounded batches. An item above the frame limit uses the part form |
 | `Committed` | `doc`, `client_seq`, `cursor` | **Sent only after the durable append** |
 | `Refused` | `doc`, `client_seq`, `code`, `retryable`, `detail` | Includes `NotSaving` |
-| `Broadcast` | `doc`, `cursor`, `origin_device`, `payload` | Not sent to the origin device |
+| `Broadcast` | `doc`, `cursor`, `origin_device`, `part?`, `payload` | Not sent to the origin device |
+| `PeerRejected` | `doc`, `cursor`, `device`, `code` | Another device rejected the update at `cursor`. Sent to its origin, which runs the restored copy flow for that document ([56](56-SYNC-DESIGN.md)) |
 | `Awareness` | `doc`, `origin`, `payload` | Identity from the server |
 | `PresenceList` | `doc`, `members` | On subscribe and on change |
 | `AccessChanged` | `doc`, `access`, `grants_version` | Reduction takes effect at once. Client stops or reloads |
 | `Draining` | `retry_after` | Graceful shutdown |
 | `Goodbye` | `code` | Before a deliberate close |
 | `Pong` | `nonce` | |
+
+**An `Update` above 2 MiB.** The client splits it into parts that each fit a frame, all with one `client_seq`, in order from 0. `total` and the `sha256` of the whole are the same on every part. The server holds the parts until the last one, checks the hash, and only then runs the pipeline on the whole update, so nothing is classified, committed or relayed in pieces. `Committed` or `Refused` answers the whole. A whole update is at most 64 MiB, the frame limit in [23](23-STORAGE-FORMAT.md), in at most 64 parts. One socket holds at most one unfinished update per document, and other messages may come between parts. Bad numbering or a bad hash is `CN-SRV-0005`, and over a limit is `CN-SRV-0006`. A lost socket drops the parts, and resume sends them again from 0, which is safe because `client_seq` is unchanged. `Broadcast` and `Catchup` use the same form downstream.
 
 **Connection states on the client.**
 
@@ -242,7 +249,7 @@ The state panel shows this per server connection, on the same `SyncStatus` shape
 
 **Log epoch.** `log_epoch` changes when the server's log is rewound, by restoring a backup. A client whose cursor is ahead of the head, or whose epoch differs, resends every update it holds that the server no longer has. **This makes a backup restore heal from clients:** any edit still on a device returns. Managed mode classifies them against current grants as normal, so a revoked person's old edits return as restored copies on their device, not to the page.
 
-**Merge review.** Live co-editing never creates review markers. A device returning from offline runs the overlap detector on its own catch-up, on the client, in both modes. The flow is [56](56-SYNC-DESIGN.md).
+**Merge review.** Live co-editing never creates review markers. A device returning from offline runs the overlap detector on its own catch-up, on the client, in both modes. Its `MarkReview` and `WriteCheckpoint` writes are allowed classes in the matrix above. The flow is [56](56-SYNC-DESIGN.md).
 
 **Protocol version.** Server protocol is independent of the sync protocol, and starts at 1. The server supports a window of versions. A client outside it gets `UpdateNeeded` and can keep working locally.
 
@@ -267,11 +274,11 @@ Attachments of any size, resumable, content-addressed (FR-08, `FIL-01`, [23](23-
 | Step | Route | Notes |
 | --- | --- | --- |
 | Start | `POST /api/v1/workspaces/{w}/blobs` `{ id, size, chunk_size, chunks, sha256? }` | `id` is a content hash in managed mode, a keyed tag in E2EE. Returns existing state, so restart is the same call |
-| Status | `GET /api/v1/blobs/{id}/status` | Which chunks are held. This is how a client resumes after any failure |
-| Upload | `PUT /api/v1/blobs/{id}/chunks/{n}` | Idempotent. Header gives the chunk hash, checked on receipt |
-| Finish | `POST /api/v1/blobs/{id}/complete` | Managed: whole hash and size checked, then available. E2EE: count and size only |
-| Download | `GET /api/v1/blobs/{id}` with `Range`, or `/chunks/{n}` | Permission checked per request, `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, never served inline from the app origin |
-| Abort | `DELETE /api/v1/blobs/{id}/upload` | Also expires after 7 days idle (proposal) |
+| Status | `GET /api/v1/workspaces/{w}/blobs/{id}/status` | Which chunks are held. This is how a client resumes after any failure |
+| Upload | `PUT /api/v1/workspaces/{w}/blobs/{id}/chunks/{n}` | Idempotent. Header gives the chunk hash, checked on receipt |
+| Finish | `POST /api/v1/workspaces/{w}/blobs/{id}/complete` | Managed: whole hash and size checked, then available. E2EE: count and size only |
+| Download | `GET /api/v1/workspaces/{w}/blobs/{id}` with `Range`, or `/chunks/{n}` | Permission checked per request, `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, never served inline from the app origin |
+| Abort | `DELETE /api/v1/workspaces/{w}/blobs/{id}/upload` | Also expires after 7 days idle (proposal) |
 
 Chunks stream through the server to object storage at first, so authentication stays in one place. Presigned object URLs may come later if throughput demands them, once measured. Resumable by chunk is deliberately simpler than adopting the tus protocol; it could be mapped onto later.
 
@@ -332,6 +339,8 @@ A browser that calls a provider directly does not involve this server.
 
 Sketch for `SRV-01`. Plain SQL through a pinned migration tool. Text columns hold no note text in E2EE, by test.
 
+**Every document and blob is keyed by `(workspace, id)`.** Ids are unique only within a workspace, and an imported package keeps its ids ([36](36-EXPORT-FORMAT.md)), so one package imported into two workspaces gives two documents with one id. A global key would make the second import collide with, or reach, the first.
+
 ```sql
 CREATE TABLE workspaces (
   id uuid PRIMARY KEY, mode text NOT NULL CHECK (mode IN ('e2ee','managed')),
@@ -349,26 +358,29 @@ CREATE TABLE devices (id uuid PRIMARY KEY, account uuid NOT NULL REFERENCES acco
 CREATE TABLE sessions (token_hash bytea PRIMARY KEY, account uuid NOT NULL,
   device uuid, expires_at timestamptz NOT NULL, revoked_at timestamptz);
 
-CREATE TABLE docs (id bytea PRIMARY KEY, workspace uuid NOT NULL REFERENCES workspaces,
+CREATE TABLE docs (workspace uuid NOT NULL REFERENCES workspaces, id bytea NOT NULL,
   kind smallint,                       -- NULL in e2ee: the server does not know
-  head bigint NOT NULL DEFAULT 0, floor_cursor bigint NOT NULL DEFAULT 0);
-CREATE TABLE doc_log (doc bytea NOT NULL, cursor bigint NOT NULL,
+  head bigint NOT NULL DEFAULT 0, floor_cursor bigint NOT NULL DEFAULT 0,
+  PRIMARY KEY (workspace, id));
+CREATE TABLE doc_log (workspace uuid NOT NULL, doc bytea NOT NULL, cursor bigint NOT NULL,
   device uuid NOT NULL, client_seq bigint NOT NULL, payload_hash bytea NOT NULL,
   payload bytea, payload_ref text,     -- inline up to 64 KiB, else object storage
   account uuid NOT NULL, created_at timestamptz NOT NULL,
-  PRIMARY KEY (doc, cursor), UNIQUE (doc, device, client_seq))
-  PARTITION BY HASH (doc);
-CREATE TABLE doc_device_cursor (doc bytea, device uuid, cursor bigint NOT NULL,
-  PRIMARY KEY (doc, device));
-CREATE TABLE checkpoints (id uuid PRIMARY KEY, doc bytea NOT NULL, covers_cursor bigint NOT NULL,
+  PRIMARY KEY (workspace, doc, cursor), UNIQUE (workspace, doc, device, client_seq))
+  PARTITION BY HASH (workspace, doc);
+CREATE TABLE doc_device_cursor (workspace uuid, doc bytea, device uuid, cursor bigint NOT NULL,
+  PRIMARY KEY (workspace, doc, device));
+CREATE TABLE checkpoints (id uuid PRIMARY KEY, workspace uuid NOT NULL, doc bytea NOT NULL, covers_cursor bigint NOT NULL,
   object_key text NOT NULL, size bigint NOT NULL, created_by uuid,
-  verified_by uuid[] NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL);
+  verified_by uuid[] NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL,
+  FOREIGN KEY (workspace, doc) REFERENCES docs (workspace, id));
 
 CREATE TABLE grants (workspace uuid, doc bytea, subject_kind text, subject uuid,
   access text NOT NULL, created_by uuid, created_at timestamptz,
-  PRIMARY KEY (doc, subject_kind, subject));      -- managed only
-CREATE TABLE page_locks (doc bytea PRIMARY KEY, locked_by uuid, max_access text, reason text);
-CREATE TABLE share_links (token_hash bytea PRIMARY KEY, doc bytea NOT NULL, access text NOT NULL
+  PRIMARY KEY (workspace, doc, subject_kind, subject));      -- managed only
+CREATE TABLE page_locks (workspace uuid, doc bytea, locked_by uuid, max_access text, reason text,
+  PRIMARY KEY (workspace, doc));
+CREATE TABLE share_links (token_hash bytea PRIMARY KEY, workspace uuid NOT NULL, doc bytea NOT NULL, access text NOT NULL
   CHECK (access IN ('view','comment')), expires_at timestamptz, revoked_at timestamptz);
 
 CREATE TABLE blobs (id bytea, workspace uuid, size bigint, chunk_size int, state text,
@@ -398,15 +410,15 @@ Prefix `/api/v1`, JSON unless noted. Errors: `{ "code": "CN-SRV-nnnn", "message_
 | `GET/PATCH/DELETE /workspaces/{w}` | Settings, delete | Admin | Both |
 | `GET/POST/DELETE /workspaces/{w}/members` | Members | Admin | Both |
 | `GET /workspaces/{w}/devices`, `DELETE …/{d}` | Device list, explicit removal | Own, or Admin | Both |
-| `GET/PUT/DELETE /docs/{d}/grants` | Page sharing | Manage | M |
-| `PUT/DELETE /docs/{d}/lock` | Lock, reduce only | Manage | M |
-| `POST/DELETE /docs/{d}/share-links` | External link | Manage | M |
-| `GET /shared-with-me` | Pages available to me | Account | M |
-| `POST /docs/{d}/checkpoints` | Client compaction | Publish right | E |
-| `GET /docs/{d}/checkpoints/latest` | Checkpoint reference | Subscribe right | Both |
+| `GET/PUT/DELETE /workspaces/{w}/docs/{d}/grants` | Page sharing | Manage | M |
+| `PUT/DELETE /workspaces/{w}/docs/{d}/lock` | Lock, reduce only | Manage | M |
+| `POST/DELETE /workspaces/{w}/docs/{d}/share-links` | External link | Manage | M |
+| `GET /shared-with-me` | Pages available to me, each as workspace and id | Account | M |
+| `POST /workspaces/{w}/docs/{d}/checkpoints` | Client compaction | Publish right | E |
+| `GET /workspaces/{w}/docs/{d}/checkpoints/latest` | Checkpoint reference | Subscribe right | Both |
 | Blob routes above | Upload, download | Edit to write, View to read | Both |
 | `GET /workspaces/{w}/search?q=` | Organisation search | Filtered by read access | M |
-| `GET /docs/{d}/history`, `POST …/restore` | Admin recovery | Admin | M |
+| `GET /workspaces/{w}/docs/{d}/history`, `POST …/restore` | Admin recovery | Admin | M |
 | `POST /workspaces/{w}/export` | Server-side package ([36](36-EXPORT-FORMAT.md)) | Policy | M |
 | `GET/PUT /workspaces/{w}/retention` | Retention and hold (ENT-R08) | Admin | M |
 | `POST /ai/relay/{provider}/chat` | Provider relay | Policy | M; E only if opted in |
@@ -517,6 +529,7 @@ Proposed for [20](20-ERROR-CODE-REGISTRY.md) and [21](21-PARSER-LIMITS.md).
 | Outbound queue per socket | 4 MiB |
 | `Catchup` batch | 1 MiB or 1,000 items |
 | Awareness rate | 10 per second |
+| Whole `Update` across parts | 64 MiB, 64 parts |
 | `Hello` deadline | 10 s |
 | Blob chunk | 16 MiB, default 4 MiB |
 | Blob idle expiry | 7 days |
@@ -551,7 +564,10 @@ Proposed for [20](20-ERROR-CODE-REGISTRY.md) and [21](21-PARSER-LIMITS.md).
 | Refusal | Offline edits with revoked access appear as a restored copy, none lost |
 | Append before ack | Injected crash at each step: any `Committed` update survives restart |
 | Backup | Restore an old backup: clients heal, none lost |
-| Resume | Socket killed at each message boundary: no loss, no duplicate |
+| Resume | Socket killed at each message boundary, and between the parts of a large `Update`: no loss, no duplicate |
+| Bookkeeping | A device with Edit returning with `MarkReview` and `WriteCheckpoint` in its updates is committed. A device below Edit writes neither, and is not refused (`SRV-03`) |
+| Rotation | Document ids in E2EE are the same before and after a key rotation (`SRV-04`) |
+| Ids | One package imported into two workspaces gives two independent documents. A route with the wrong workspace is refused (`SRV-03`) |
 | Hostile input | Fuzzed frames, fuzzed updates: no crash of the process (SEC-S01, SEC-V02). One fixture per limit |
 | Identity | `resume_key` from another user refused. Token never in a URL or log. Cross-origin socket refused |
 | `SRV-05` | Comment access cannot publish to the page document |

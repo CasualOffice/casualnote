@@ -227,11 +227,12 @@ Package and ZIP limits are those of [36](36-EXPORT-FORMAT.md). Others are propos
 
 | Limit | Value |
 | --- | --- |
-| Whole import | 20 GiB, 100,000 pages, as a package |
-| One Markdown or HTML file | 64 MiB, as a package's JSON limit |
+| Whole import | 20 GiB, 100,000 pages. A package holds this: its limit is 1,000,000 entries, and each page takes up to three ([36](36-EXPORT-FORMAT.md)) |
+| One Markdown or HTML file | 64 MiB, as a package's page JSON limit |
 | One ENEX file | 20 GiB, streamed |
 | One ENML body, decoded | 64 MiB |
 | One asset | 2 GiB, as a package entry |
+| Ink, when importing a package | Read line by line: 16 MiB per line, and the entry limit per file, as [36](36-EXPORT-FORMAT.md) |
 | Compression ratio, per entry | 200:1 for entries over 1 MiB, as [36](36-EXPORT-FORMAT.md) |
 | Tree depth, HTML and XML | 64, then flatten or refuse as above |
 | Nested Markdown structure | 64 |

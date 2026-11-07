@@ -40,7 +40,7 @@ CI is part of the architecture. Job names are a contract, and a change does not 
 | `language` | Language level above | 2 |
 | `a11y` | Accessibility level above | 2 |
 | `perf` | Performance level above | 2 |
-| `ai-safety` | AI levels above | 5 |
+| `ai-safety` | AI levels above, and `check-secrets.py` | 5 |
 | `mcp` | Client conformance, root-escape tests | 5 |
 | `desktop` | Bundle on three platforms | 6 |
 | `sync-faults` | Fault injection, nightly | 7 |
@@ -66,7 +66,7 @@ Each gate has a seeded violation seen failing, as OpenCalc's `check-gate-selftes
 
 A release does not ship unless all of these pass:
 
-1. All six promises in [01](01-ORD.md) are green, on the release commit.
+1. Every promise in [01](01-ORD.md) that applies to what is being released is green, on the release commit. The first release is local-only, so PR-2 and PR-1 across devices apply from Phase 7.
 2. Signed installers on three platforms, installed fresh and upgraded from the last release.
 3. A package from every earlier version still imports.
 4. SBOM published, with code, model and font licences.

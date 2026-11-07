@@ -31,7 +31,7 @@ Evidence is in [12](12-OPEN-SOURCE-AUDIT.md).
 
 ## The promises
 
-Each is a CI test before it can be claimed ([15](15-CI-AND-RELEASE-GATES.md)).
+Each is a CI test before it can be claimed ([15](15-CI-AND-RELEASE-GATES.md)). The first release is local-only, so PR-2 and PR-1 across devices start with sync, in Phase 7.
 
 | ID | Promise | Proven by |
 | --- | --- | --- |

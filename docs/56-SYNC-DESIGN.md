@@ -162,7 +162,7 @@ Conflict copies are never deleted automatically unless they are byte-identical t
       b/<tag32>/<index8>.cnsb       blob chunks
 ```
 
-Page ids, titles, tags and languages appear nowhere outside the sealed body. This layout is the sync protocol's own, and is separate from the local layout in [23](23-STORAGE-FORMAT.md). `casualnote-sync.json` contains no key, and creating it needs an explicit user action: an empty root is never initialised automatically (see `RootMissing`).
+Page ids, titles, tags and languages appear nowhere outside the sealed body. This layout is the sync protocol's own, and is separate from the local layout in [23](23-STORAGE-FORMAT.md). The mapping between the two is below. `casualnote-sync.json` contains no key, and creating it needs an explicit user action: an empty root is never initialised automatically (see `RootMissing`).
 
 ### Sealed objects
 
@@ -190,16 +190,17 @@ The plaintext body is canonical CBOR (RFC 8949 §4.2), padded with zeros to the 
 
 ```
 SegmentBody {
-  prev_hash:   [u8; 32],     // SHA-256 of this device's previous sealed segment; zeros for seq 1
+  prev_seq:    u64,          // seq - 1, except after a re-seal (see Rotation); 0 for the first
+  prev_hash:   [u8; 32],     // SHA-256 of the object at prev_seq; zeros for the first
   sealed_at:   u64,          // writer's clock, advisory, used for display only
   merge_codec: u16,          // opaque, from -merge; identifies the CRDT encoding
-  docs: [ { doc_id, update: bytes, end_version: bytes } ],  // tree and page documents
+  docs: [ { doc_id, class, segments: [ { sequence, file: bytes } ], end_version: bytes } ],
   blobs_added: [ blob_tag ],
   review_seen: [ marker_id ],
 }
 ```
 
-A sync segment wraps one or more closed local log segments ([23](23-STORAGE-FORMAT.md)). `-sync` treats `update` and `end_version` as opaque bytes from `-merge`. `prev_hash` gives each device a hash chain, which is how a fork or a tampered history is noticed.
+`file` is a sealed local segment from [23](23-STORAGE-FORMAT.md), byte for byte. `-sync` treats it and `end_version` as opaque. `prev_hash` gives each device a hash chain, which is how a fork or a tampered history is noticed.
 
 **Ack body.**
 
@@ -209,12 +210,13 @@ AckBody {
   protocol_max: u16,
   acked: { device: { seq: u64, chain_hash: [u8; 32] } },  // contiguous, durably imported
   extra: { device: [ (seq_from, seq_to) ] },              // imported past a gap
+  rejected: { device: [ { seq, doc_id, code } ] },        // documents that guarded import refused
   checkpoints_verified: [ checkpoint_id ],
   open_reviews: u32,
 }
 ```
 
-An entry means "I hold every segment of this device from 1 to `seq`, or a checkpoint covering them, on disk after fsync".
+An entry means "I hold every segment of this device from 1 to `seq`, or a checkpoint covering them, on disk after fsync, and each document in them is imported, or is listed in `rejected` with its bytes kept here". A device acks a tree segment that trashes a page only after it has written its own edits to that page, so a purge check sees them ([24](24-OPERATIONS-AND-MERGE.md)).
 
 **Registry records.**
 
@@ -225,8 +227,49 @@ An entry means "I hold every segment of this device from 1 to `seq`, or a checkp
 | `Remove` | target device, removed by, reason, the remover's view of the target's ack | Explicit removal. Monotonic: a removed id never returns |
 | `Retire` | old device id, new device id | A forked or restored device moved to a new id |
 | `ProtocolFloor` | notebook-independent minimum protocol | See versioning |
+| `AbandonGap` | device, notebook, `seq_from`, `seq_to`, confirmed by | A person has confirmed no device can supply these. See Gaps and reordering |
 
 The registry is the union of all records seen. It is a grow-only set with "removed beats active", so no ordering or clock is needed and two devices can write at once. **Each device also keeps its own persistent copy of every device it has ever seen,** and a device missing from a listing is never treated as unregistered.
+
+### Local segments and sync objects
+
+The log in [23](23-STORAGE-FORMAT.md) holds one document per file, and a sync object can hold many. This is the one mapping between them.
+
+| | Local segment ([23](23-STORAGE-FORMAT.md)) | Sync object (kind 1, this page) |
+| --- | --- | --- |
+| Holds | Frames for one document from one device | One or more whole sealed local segments, for any documents, from one device |
+| Sequence | `sequence`: per device, per document, gapless from 1 | `seq`: per device, per notebook, per kind, rising |
+| Chain | `prev_segment_sha256`: previous local segment of that document | `prev_hash`: previous object of that device |
+| Used by | Recovery, snapshot `covers`, compaction | Listing, acks, the floor, checkpoint vectors |
+| Lives at | `log/<device>-<sequence>.seg` | `local/sync/outbox/` and `local/sync/inbox/`, and `d/<device>/n/<notebook>/s/` on storage |
+
+| Rule | Detail |
+| --- | --- |
+| **Wrapping** | A file goes in unchanged, never re-framed. Each local segment is in exactly one object of its device, recorded in `local/sync/map.idx` when the object is sealed |
+| **Packing** | Closed local segments are taken in the order they were sealed, until the next would pass the sealed segment limit. One maximum segment always fits alone |
+| **Outbound** | `Pending` means sealed locally and not yet in `map.idx`. The object goes to the outbox, flushed, and then `map.idx` is written. A crash in between seals an equivalent object again, and an unsent outbox file with no map entry is removed |
+| **Filing** | After opening, each document entry is checked: `doc_id` hashes to the file's `doc_key`, the file's `device_id` is the object's `device`, and its seal is valid. The file is then written to `log/<device>-<sequence>.seg` in that document's directory, flushed with its directory. A file already there with the same hash is skipped. A different one is a fork |
+| **Recovery on fetched objects** | A filed segment is an ordinary foreign segment, and recovery steps 5, 10 and 11 of [23](23-STORAGE-FORMAT.md) apply unchanged. So frames are never replayed from an object. An inbox file is removed only once every document in it is filed and has an outcome. A crash before then files again, with no effect. A filed segment that later fails its hash is looked up in `map.idx`, and its object is fetched again |
+| **Coverage** | Snapshot `covers` speak `sequence`. Acks and checkpoint vectors speak `seq`. `map.idx` translates in both directions. Compaction's "own segments uploaded" means the object holding them is `Written`. Deleting a file from `log/` does not touch the outbox |
+| **Booting from a checkpoint** | Each document in a checkpoint carries `covers` in the [23](23-STORAGE-FORMAT.md) form. A new device writes these into its `base` snapshot, so the first local segment it files can name a predecessor it never held |
+
+**Import outcome is per document.** An object is not imported or rejected as a whole. It has one outcome per document, and guarded import runs per local segment, so a crash count ([24](24-OPERATIONS-AND-MERGE.md)) also falls on one document.
+
+| Outcome for a document | Effect | Effect on the object |
+| --- | --- | --- |
+| `Applied` | Imported | None |
+| `Pending` | Held in the inbox, with the other documents going ahead | Not `Durable` until it resolves |
+| `BeforeTrimPoint` | Restored copy flow | Counts as resolved |
+| `Rejected` | Segment quarantined, `CN-SYN-0009`. Reported in the next ack | Counts as resolved. **The other documents are unaffected, and so is the floor** |
+
+**After a rejection.**
+
+1. **At the rejecting device.** The bytes stay in quarantine, visible. Later segments from that device for that document are `Rejected` too, since they depend on it, and so is a `Pending` update whose only missing dependency is a rejected one. Other documents and other devices carry on. A new build retries once, and a success drops the entry from the next ack.
+2. **The floor moves on.** The ack's `seq` passes the rejected document, because its bytes are held and the rejection is stated. Nothing on storage is pinned for it.
+3. **At the writer.** On seeing its own document in any device's `rejected`, the writer runs the restored copy flow for that document alone (`CN-SYN-0017`): it stops publishing the document, projects its changed pages to a copy through `-ops`, discards its replica of the document, and reloads it from the newest verified checkpoint under a fresh peer. The edits reach every device as new pages. This is the same path as a permission refusal in [57](57-SERVER-DESIGN.md).
+4. **If the writer is gone,** the rejecting device tries one rebuild of the document from a verified checkpoint from another device. If that also fails, the document is listed as unavailable (`CN-STO-0019`), and everything else still works.
+
+Any key holder can claim a rejection, and the cost is a needless copy. That fits the limits under Cryptography, and comes with team sharing if it ever matters.
 
 ### Lifecycle of an object
 
@@ -246,7 +289,7 @@ Seen(all) ── covered by verified checkpoint ──▶ Trimmable
 Trimmable ── delete ──▶ Deleted (remote only)
 ```
 
-The sealed bytes are persisted before the first put, and a retry always sends the same bytes. A segment leaves the **local outbox only at `Seen(all)` and checkpoint covered**, which is what lets a device republish after storage has lost something.
+The sealed bytes are persisted before the first put, and a retry always sends the same bytes, except for a re-seal after a rotation. A segment leaves the **local outbox only at `Seen(all)` and checkpoint covered**, which is what lets a device republish after storage has lost something.
 
 **Inbound object.**
 
@@ -255,18 +298,20 @@ Listed ── name and size within limits ──▶ Fetching
 Fetching ── Got ──▶ Fetched
 Fetched ── open succeeds ──▶ Opened
 Fetched ── open fails ──▶ Incomplete ── retries exhausted ──▶ Corrupt (kept, visible)
+Fetched ── sealed under an old key past its cutoff ──▶ PastCutoff (kept, not imported, CN-CRY-0008)
 Opened ── protocol or codec too new ──▶ TooNew (kept, not acked)
 Opened ── key unknown ──▶ NeedsKey (kept, not acked)
-Opened ── guarded import: Applied ──▶ Imported
-Opened ── guarded import: Pending ──▶ Waiting (deps missing, held in inbox)
-Opened ── guarded import: Rejected ──▶ Quarantined (CN-SYN-0009, visible)
-Imported ── fsync ──▶ Durable ── included in next ack ──▶ Acked
+Opened ── file each document's segments ──▶ Filed
+Filed ── guarded import per document ──▶ one outcome per document (above)
+Filed ── any document Pending ──▶ Waiting (held in inbox, others go ahead)
+Filed ── every document Applied or Rejected ──▶ Imported
+Imported ── fsync ──▶ Durable ── included in next ack, with any rejected documents ──▶ Acked
 ```
 
 **Contract needed from `-merge`** (proposed row `FND-20`, for [24](24-OPERATIONS-AND-MERGE.md)):
 
-- Import is idempotent and commutative, and is told apart as `Applied`, `Pending { missing }`, `BeforeTrimPoint`, or `Rejected`. The idempotence and pending behaviour of Loro is unverified here and is for `SPK-01`.
-- **A peer id is never reused after a restore or clone.** Two replicas writing under one CRDT peer id with the same counters could diverge in a way the CRDT cannot repair. Allocating a fresh peer id on each open, or on any detected restore, is the likely answer, and its cost on long histories is unmeasured.
+- Import is idempotent and commutative, and its outcome for a document is `Applied`, `Pending { missing }`, `BeforeTrimPoint`, or `Rejected`. The idempotence and pending behaviour of Loro is unverified here and is for `SPK-01`.
+- **A peer id is never reused.** A fresh one is minted on each open of a notebook for writing ([24](24-OPERATIONS-AND-MERGE.md)). Two replicas writing under one CRDT peer id with the same counters could diverge in a way the CRDT cannot repair, and import is **not** assumed to merge such branches. That is unverified and is an `SPK-01` check. The cost of a fresh peer per open on long histories is unmeasured.
 
 ### Exchange algorithm
 
@@ -285,8 +330,8 @@ round(root):
   4. KEYS        new key records: try with held keys; else NeedsKey
   5. REGISTRY    new registry records: apply; if this device is removed, go to Removed flow
   6. FETCH       fetch new objects, bounded concurrency (proposal 4), size checked first
-  7. OPEN        open each; verify hash chain; route by kind
-  8. IMPORT      segments through guarded import; retry Waiting; fsync
+  7. OPEN        open each; check its key cutoff; verify hash chain; route by kind
+  8. IMPORT      file segments under log/; guarded import per document; retry Waiting; fsync
   9. OVERLAP     run overlap detector on the imported range; create review markers
  10. ACK         if acked vector changed and 60 s since last (proposal): write new ack
  11. CHECKPOINT  if thresholds passed and none is in flight: write checkpoint
@@ -297,6 +342,15 @@ round(root):
 Each step records its own outcome. A failed step does not stop later steps that do not depend on it: failed uploads do not stop imports, and a corrupt object from one device does not stop another device's.
 
 **Gaps and reordering.** `seq` 9 arriving before `seq` 8 is imported anyway if `-merge` can take it, and is otherwise `Waiting`. The ack's contiguous `seq` stays at 7, with 9 in `extra`, so the trim floor cannot pass a gap. After a gap has been open for 24 hours (proposal) the panel shows it under that device, and other devices' acks show whether they received the missing segment.
+
+**Nothing waits for ever on frames that cannot be fetched.** A timer never removes anything, so a gap closes in one of four ways:
+
+| Way out | When |
+| --- | --- |
+| The owner republishes | Its outbox still holds the object. The usual case |
+| A good-prefix copy | The owner's own file was damaged before it ever left. [23](23-STORAGE-FORMAT.md) seals the good frames under the same sequence and rotates the peer, so its object arrives, the chain holds, and later frames depend only on what can be fetched. So damage leaves no gap for others to wait on |
+| The owner is `Retire`d or removed | Its acks and objects no longer count towards the floor |
+| A person confirms | The panel names the gap and what depends on it. Confirming writes `AbandonGap`, and every device treats that range as passed for the floor. Objects still `Waiting` on it are kept, listed as unavailable, and retried if the range ever appears |
 
 **Self-check for dropped writes.** Storage may report success and lose the object. Each round, a device compares its own listing with its outbox, and also reads other devices' acks of its own segments. A `Written` segment that is absent from the listing, or that stays missing from acks while later segments appear in `extra`, goes back to `Sealed` and is put again with the same bytes. A lagging listing makes this a harmless repeat.
 
@@ -309,7 +363,8 @@ Each step records its own outcome. A failed step does not stop later steps that 
 | Local fsync and seal | Log has unsealed segments; seal them |
 | Seal and put | Outbox holds sealed bytes; put them, same bytes |
 | Put and recording `Written` | Put again, get `AlreadyExists`, compare hash, `Written` |
-| Fetch and import | Inbox entry is reprocessed; import is idempotent |
+| Fetch and filing | Inbox entry is filed again; a file already there with the same hash is skipped |
+| Filing and import | Inbox entry is reprocessed; import is idempotent, and a crash counts one attempt on that segment |
 | Import and fsync | Lost locally, cursor did not advance, fetched again |
 | Fsync and ack | Ack is written later. Others wait a little longer |
 | Ack and delete of older ack | Two acks exist, the higher wins |
@@ -329,12 +384,22 @@ A device copied by a disk image, a VM snapshot or a backup restore believes it i
 
 Response, in order:
 
-1. Stop writing under this id. Import the unknown segments, since they are this person's edits.
+1. Stop writing under this id. Apply the branch rule below to the unknown segments, since they are this person's edits.
 2. Mint a new device id and write `Retire { old, new }`.
-3. Republish every outbox segment not yet seen by all, under the new id, as new segments. The CRDT import makes the repeat harmless.
+3. Republish every outbox segment not yet seen by all, up to the fork and on the canonical branch, under the new id, as new objects. These are identical updates, so the repeat is harmless if import is idempotent (`SPK-01`).
 4. Show the event in the panel (`CN-SYN-0006`). The old id stops holding back trimming only after the user confirms that the original device is gone, because the two may both be alive.
 
-A reader holding two valid objects keeps and imports both, so neither is lost.
+**The branch rule. CRDT import is not assumed to merge two branches of one device.** They may share a peer id with overlapping counters, and what Loro then does is unverified (`SPK-01`). With a fresh peer per open this takes a process cloned while running, but the rule does not depend on which case it is.
+
+| Case | What happens |
+| --- | --- |
+| A `seq` this device has no record of, and no object of its own at that `seq` | Not divergent. Import it, and carry on from there under the new id |
+| Two valid objects for one device and `seq`, or a chain that differs | A fork. The **canonical** branch has the lowest SHA-256 of the sealed bytes at the first differing `seq`, so every device reaches the same answer with no clock and no coordination. The same test applies to local segments at the first differing `sequence` |
+| A reader that has imported neither branch | Imports the canonical one. It imports the divergent one into a scratch replica built from the last common point, never the live document, and that scratch replica feeds steps 4 to 7 of the restored copy flow |
+| A reader that already imported the divergent branch | It cannot be taken out. So the reader runs the full restored copy flow for the documents involved, and rejoins on the canonical branch |
+| A segment in a branch that fails in the scratch replica | Kept in quarantine, named in the panel, and offered for export |
+
+Neither branch is lost, and the copy is visible. Two readers may each make a copy of one branch, and the panel groups them by branch hash. A duplicate costs a glance, and a missing copy costs an edit.
 
 ### Device registry and sync state
 
@@ -402,8 +467,11 @@ pub struct DeviceRow {
 | Bit flip or truncation | `Incomplete`, then `Corrupt` | `CN-SYN-0004` | Owner republishes; else shown |
 | Tampered header or body | Same, and never imported | `CN-SYN-0004` | Shown |
 | Conflict copy, identical | Counted | None | None |
-| Conflict copy, differing | Fork | `CN-SYN-0006` | Confirm which device is alive |
-| Hostile CRDT update | `Quarantined` | `CN-SYN-0009` | Export for a report; never imported |
+| Conflict copy, differing | Fork. The divergent branch becomes a restored copy | `CN-SYN-0006` | Review the copy, and confirm which device is alive |
+| Hostile CRDT update | That document `Rejected`, and reported in the ack. Others unaffected | `CN-SYN-0009` | Export for a report; never imported |
+| Another device rejected this device's update | `restored_copies` gains an entry for that document | `CN-SYN-0017` | Review the copy |
+| Object under an old key past its cutoff | Device `failed`, not imported | `CN-CRY-0008` | Shown. An honest device re-seals by itself |
+| Gap no device can supply | `failed` on that device, with what depends on it | `CN-SYN-0005` | Confirm to write `AbandonGap` |
 | Storage unreachable | `root: Unreachable` | `CN-SYN-0001` | Check connection or mount |
 | Root file missing | `root: RootMissing` | `CN-SYN-0003` | Reconnect, or explicitly reseed |
 | Objects vanished, cursor ahead of listing | `root: StorageRegressed` | `CN-SYN-0010` | Explicitly reseed |
@@ -426,7 +494,7 @@ The detector and marker model belong to [24](24-OPERATIONS-AND-MERGE.md) (`MRG-0
 3. The block gets a quiet marker, the page and panel show a count, and PR-2 applies: an open review is part of the sync state.
 4. Opening a marker shows each device's version read-only, from history, with the merged result.
 5. **Keep this one** produces an ordinary op batch through `-ops`, one undo step ([24](24-OPERATIONS-AND-MERGE.md)). **Keep merged** changes no content.
-6. The resolution is recorded in the page document, so it syncs and clears on other devices.
+6. The resolution is recorded in the page document as a versioned state ([24](24-OPERATIONS-AND-MERGE.md)), so it syncs, clears on other devices, and does not reopen when a late import arrives.
 
 ```
 Open ──▶ Viewed ──▶ Resolved(KeepVersion | KeepMerged)
@@ -454,7 +522,8 @@ There are two kinds of trimming, and they carry different risks.
 
 ```
 floor(N, X) = min over registered subscribers D of N: acked[D][X].seq
-              (a device counts as having acked everything it wrote itself)
+              (a device counts as having acked everything it wrote itself,
+               and a rejected document or an AbandonGap range does not stop it)
 
 Device X may delete its own segment s only if all hold:
   s.seq <= floor(N, X)
@@ -498,17 +567,21 @@ A device is beyond the limit when it cannot rejoin normally. Causes:
 | Its state is older than the T2 trim point | Guarded import returns `BeforeTrimPoint` |
 | Storage lost what it needs and no device can supply it | Gap that no device can fill, confirmed by the user |
 | Its CRDT or protocol version is no longer supported by the others | Protocol check |
+| Another device rejected its update for one document | `rejected` in an ack. Only that document's flow runs |
+| A fork left it on the divergent branch | The branch rule. Only the documents involved run the flow |
 
 Flow:
 
 ```
-1. Freeze     stop publishing this notebook. Keep the local replica read-only
+1. Freeze     stop publishing this notebook, or this one document when the cause
+              names one. Keep the local replica read-only
 2. Bootstrap  build a fresh replica from the newest verified checkpoint
 3. Diff       -merge lists pages changed locally since the last point known shared
 4. Project    each changed page to model state, as -export does, with no CRDT state
 5. Create     through -ops, as one batch, new pages under
               "Restored copies / <device name> / <date>", new ids, each linked to its original
-6. Publish    under a new device id; blobs referenced by the copies are re-uploaded
+6. Publish    under a new device id, or the same id when only one document was frozen;
+              blobs referenced by the copies are re-uploaded
 7. Show       panel entry, CN-SYN-0015, with a count of pages. It stays until dismissed
 8. Keep       the frozen replica stays until the person deletes it explicitly
 ```
@@ -582,6 +655,8 @@ Each object has its own key from its random salt, so a random nonce under that k
 
 `key_id` is the first 16 bytes of `HKDF(WK, "casualnote/v1/key-id")`, so it identifies a key without revealing it.
 
+**DK, the document id key,** sits outside this hierarchy, because a document's id on a server must not change when the key does ([57](57-SERVER-DESIGN.md)). It is 256 random bits, made once when a workspace turns on encryption, and independent of every epoch. Each new key record wraps the same DK under its WK. A removed device keeps DK, and can compute the id of any page id it already knows. That reveals which opaque document is which to someone who has held the notes, and opens nothing.
+
 **Argon2id parameters.** Proposed default: 128 MiB, t = 3, p = 1. RFC 9106 §4's recommendations are t = 1, p = 4, 2 GiB, and, for low memory, t = 3, p = 4, 64 MiB. p = 1 is proposed because `wasm32` may run single-threaded, and the parameter changes the result. The timing on phones and in wasm is unmeasured, and `CRY-01` must time it on the lowest supported device before the defaults are fixed.
 
 **Parameter bounds protect against hostile storage.** Parameters come from storage, so the client checks them before deriving anything: below a 64 MiB or t = 2 floor is refused (`CN-CRY-0003`), which stops a downgrade, and above a 1 GiB or t = 10 ceiling is refused, which stops a memory-exhaustion attack.
@@ -600,6 +675,8 @@ KeyRecord {
     { kind: recovery, nonce, ciphertext },
   ],
   prev: [ { wk_id, nonce, ciphertext } ],   // earlier WK, wrapped under this WK
+  doc_id_key: { nonce, ciphertext },        // DK, wrapped under this WK. The same DK in every epoch
+  cutoffs: { nonce, ciphertext },           // sealed under this WK, see Rotation
 }
 ```
 
@@ -647,9 +724,19 @@ Hidden: titles, text, page ids and structure, tags, languages, media types, file
 | --- | --- | --- | --- |
 | **Change passphrase** | New key record with new wrap of the same WK. Needs the current key. The owner of each older record deletes it on seeing the new one, and until then the old passphrase still opens it | A weak old passphrase, going forward | Anyone who already has the old record and passphrase. Storage may keep old versions, so **a suspected leak needs rotation** |
 | **New recovery key** | New record, same WK | A lost or exposed recovery key, with the same caveat | Same |
-| **Rotate workspace key** | Generate WK at epoch + 1, wrap the old one in `prev`, write the record. New objects use it. Old objects stay as they are until checkpoints replace them | A removed device or stolen key reading **future** data | Reading what it already holds, or old objects still on storage |
+| **Rotate workspace key** | Generate WK at epoch + 1, wrap the old one in `prev`, set the cutoffs, write the record. New objects use it. Old objects up to their cutoff stay as they are until checkpoints replace them | A removed device or stolen key reading **future** data, or writing past its cutoff | Reading what it already holds, or old objects still on storage |
 
 Rotating the key needs a human: **no device stores the passphrase or the recovery key,** so the person types the passphrase, and either types the existing recovery key or receives a new one. A removed device therefore cannot follow a rotation unless it learns the passphrase. If that passphrase may be known to whoever holds the device, it has to change at the same time, and the dialog says so.
+
+**Cutoffs.** Without a limit, whoever holds the old key can keep sealing valid objects after a rotation: edits, a `Remove` naming the person's own devices, or acks that lift the floor and trigger deletion. So the new key record carries, sealed under the new WK, a per-device cutoff for each older key: `{ old wk_id: { device: { notebook, kind: seq } } }`, the highest `seq` of each kind the rotating device had seen. Only someone who can make a new WK can write it, and that needs the passphrase or recovery key.
+
+| Rule | Detail |
+| --- | --- |
+| Refusal | A device that holds the record refuses any object sealed under that older key with a `seq` past its device's cutoff, for **every kind, including `Remove` and other registry records, and acks,** with `CN-CRY-0008`. The bytes are kept and counted, and never imported or applied |
+| Which record | The lowest-epoch record whose `prev` lists that key. A device with no entry has a cutoff of zero for it |
+| An honest device that was offline | It may have sealed objects past its cutoff before it knew. After unlocking, it **re-seals** each of them under the current key, same plaintext, as new objects with new `seq`. This is the one case where a retry changes bytes. The first new object's `prev_seq` names the cutoff, so the refused range is not a gap. The owner then deletes the refused ones |
+| A removed device | Its objects past the cutoff stay refused. Anything it holds returns through the restored copy flow, if a person lets it back in |
+| Limit | A device that has not yet seen the record cannot apply it, and storage can hide a record. See "Hiding an epoch" above |
 
 A device that was offline during a rotation meets an unknown `key_id`, shows `NeedsKey`, and continues after the passphrase. If it has been removed, it goes through the restored copy flow. Re-encryption of old data happens over time through checkpoints and T1; "rotation finished" is reported only when no object under the old epoch remains, and that is shown as a state.
 
@@ -686,7 +773,7 @@ Proposals for [21](21-PARSER-LIMITS.md). Each is checked before allocation and b
 
 | Limit | Value |
 | --- | --- |
-| Sealed segment | 64 MiB, so one maximum frame from [23](23-STORAGE-FORMAT.md) always fits with its seal |
+| Sealed segment | 65 MiB. A 64 MiB frame from [23](23-STORAGE-FORMAT.md) cannot fit in exactly 64 MiB, so this is 64 MiB plus 1 MiB for the local headers and seal, the sealed header and tag, CBOR framing and padding. The same limit applies to a local file inside one |
 | Decompressed or opened body per segment | 256 MiB, the update limit in [24](24-OPERATIONS-AND-MERGE.md) |
 | Documents per segment | 4,096 |
 | Registry or ack record | 1 MiB |
@@ -767,7 +854,7 @@ Until `MRG-01` lands, the spike can use a stand-in document type with grow-only 
 | Storage full | Writes stop. Local edits are still saved | `QuotaFull`. Text is uploaded before blobs |
 | Two sync roots for one workspace | Not supported in version 1 | Setup refuses a second root |
 | Two devices create a root at once in one location | Possible on a cloud folder, where create-once does not span computers | Joining never creates a root, so this needs two explicit setups. The lowest `sync_id` among valid descriptors is the root, and the other device shows `WrongRoot` with its data intact |
-| Fresh peer ids on each open | Possible metadata growth | Left to `SPK-01` |
+| Fresh peer ids on each open | Metadata grows with every open | Decided, since counters must not be reused. `SPK-01` measures the cost |
 | Size and timing analysis | Reveals activity | Accepted (SEC-S04), stated |
 
 ### Error codes
@@ -792,6 +879,7 @@ Proposed for [20](20-ERROR-CODE-REGISTRY.md).
 | `CN-SYN-0014` | A device is holding back trimming |
 | `CN-SYN-0015` | Restored copy created |
 | `CN-SYN-0016` | This device was removed |
+| `CN-SYN-0017` | Another device rejected this device's update for one document. Its edits went to a restored copy |
 | `CN-CRY-0001` | Wrong passphrase or recovery key |
 | `CN-CRY-0002` | Recovery key has a bad check or length |
 | `CN-CRY-0003` | Key derivation parameters outside bounds |
@@ -799,6 +887,7 @@ Proposed for [20](20-ERROR-CODE-REGISTRY.md).
 | `CN-CRY-0005` | Object needs a key this device does not have |
 | `CN-CRY-0006` | Key epoch is lower than one already seen |
 | `CN-CRY-0007` | Passphrase below the minimum length |
+| `CN-CRY-0008` | Object sealed under an old key, past its device's cutoff |
 
 ## Alternatives considered
 
@@ -828,6 +917,10 @@ Proposed for [20](20-ERROR-CODE-REGISTRY.md).
 | Key test vectors | Pinned vectors for each derivation and seal, the same on native and wasm |
 | Languages | Passphrase fixtures in each launch script, NFC and NFD forms open the same key |
 | Limits | One hostile fixture per limit, one fuzz target per parser |
+| Mapping | An object with several documents files to the right `log/` paths, at every crash point, and rebuilds the same state hash as the writer (`SYN-01`) |
+| Rejection | One poisoned document in an object: the others import, the ack names it, the floor moves, and the writer's edits appear in a restored copy (`SYN-05`) |
+| Forks | A clone with a shared peer id and a restored backup each lose nothing, and the divergent branch appears in a visible copy (`SYN-05`) |
+| Rotation | Objects past a cutoff are refused for every kind, including `Remove` and acks. An honest offline device loses nothing (`CRY-01`) |
 | Trimming | Generated histories: no segment deleted while a registered device needs it. Removed-then-returned, cloned and restored devices each lose nothing (`SYN-05`) |
 | Restored copy | Device beyond the limit: every locally saved edit appears in a visible copy |
 | Licences | RustCrypto crates and dependencies pass `cargo deny` and are recorded (`GOV-05`) |

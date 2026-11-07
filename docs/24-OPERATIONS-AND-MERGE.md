@@ -24,7 +24,7 @@ Keeping a database in its host page would mean opening another page's whole docu
 
 | Work | Order | If interrupted |
 | --- | --- | --- |
-| Create page | Page document, then tree node | Orphan page document with nothing in it, removed by compaction |
+| Create page | Page document, then tree node | Orphan page document with nothing in it. R-19 in [22](22-DATA-MODEL.md) hides it, and compaction removes it |
 | Create database in a page | Database document, tree registry, then the block | Registered but unreferenced database, listed in settings |
 | Import into a notebook | All new documents, then one tree batch | Nothing appears, and the leftovers are removed |
 | Assistant write across pages | One batch per document, sharing a `group` | A prefix applied. See op batches |
@@ -35,17 +35,18 @@ The layout is named here in neutral terms and implemented only in `-merge`. "Tex
 
 | Document | Container | Contents |
 | --- | --- | --- |
-| Tree | `pages`: tree | Node metadata: `page_id`, `title` (Text, created with the node), `kind`, `database`, `favorite`, `trashed_at_ms`, `x` |
+| Tree | `pages`: tree | Node metadata: `page_id`, `title` (Text, created with the node), `kind`, `database`, `favorite`, `trashed_at_ms`, `trash_base`, `x` |
+| Tree | `purged`: map | `PageId` to `{ final, at_ms }`, the tombstone `PurgePage` leaves. `final` is the page document's version at purge |
 | Tree | `workspace`: map | `id`, `name`, `languages`, `x` |
 | Tree | `databases`: map | `DatabaseId` to `{ trashed_at_ms }` |
 | Tree | `extensions`: map | Path to `sha256` |
 | Page | `meta`: map | `view`, `lang`, `x` |
 | Page | `order`: mlist | `BlockId` strings |
-| Page | `blocks`: map | `BlockId` to map: `type`, `level`, `checked`, `lang`, `database`, `page`, `file`, `x`, `text` (Text), `del_after`, `del_fp` |
+| Page | `blocks`: map | `BlockId` to map: `type`, `level`, `checked`, `lang`, `database`, `page`, `file`, `x`, `text` (Text), `del_after`, `del_fp`, `split_from`, `merged_into` |
 | Page | `canvas`: map | `note_x`, `note_y`, `note_width`, `present`, `x` |
 | Page | `item_order`: mlist, `items`: map | `ItemId` to map: geometry, `kind`, `color`, `x`, `text` (Text), `del_fp`, `del_after` |
 | Page | `ink_order`: mlist, `ink`: map | `InkId` to one immutable value per record |
-| Page, database | `reviews`: map | Target key to marker |
+| Page, database | `reviews`: map | Target key to a map: `versions` (device to `ReviewVersion`) and `resolved` (device to the `Version` that device resolved through). An entry stays after it is resolved |
 | Page, database | `versions`: list | Checkpoints |
 | Database | `meta`: map, `name`: Text | `default_view`, `x` |
 | Database | `status_order`, `column_order`: mlist; `statuses`, `columns`: map | Id to map: `name` (Text, created with the entry), `group` or `type`, `hidden`, `x` |
@@ -72,7 +73,7 @@ pub struct OpBatch {
     pub schema: u16,                 // operation schema version
     pub origin: Origin,
     pub ops: Vec<Op>,
-    pub base: Option<ProjectionRev>,
+    pub client_seq: u64,             // per editor session and document, from 1
     pub group: Option<GroupRef>,     // id, index, total, for batches across documents
     pub wall_ms: i64,                // from the host; informative only
     pub step: StepHint,              // Coalesce with the previous step, or start a new one
@@ -81,14 +82,30 @@ pub struct OpBatch {
 pub enum Origin { User, Undo, Redo, Assistant { tool: String }, Import, Restore, Review, System }
 
 pub struct Applied { pub rev: ProjectionRev, pub delta: Delta, pub durable: AckTicket, pub undo: Option<StepId> }
+
+/// Where an op lands in a text. Never a bare offset, which a remote import would move.
+pub enum TextPos {
+    Anchor(Anchor),                                // a stable cursor from MergeDoc::anchor
+    Provisional { client_seq: u64, index: u32 },   // `index` scalars into the text that batch inserted
+}
 ```
+
+**Positions, and why batches carry no `base`.** An earlier draft carried a projection revision and refused an op when a remote import had moved its target. That lost text a person had typed, most of all across a long composition, so `base` is removed.
+
+- **Text is addressed by `TextPos`, blocks and other entries by id.** Neither moves when a remote import lands. Offsets exist only inside `-merge` at compile time, in the same single-threaded turn that resolves them.
+- **`client_seq` orders one session's batches.** They apply in that order, and a repeat returns the first result. A later batch can name text from an earlier one through a provisional anchor ([42](42-EDITOR-AND-RENDERING.md)), so **a device's own in-flight ops never make a later op stale.** It is not stored in the frame, and is unrelated to `client_seq` on the server's `Update` ([57](57-SERVER-DESIGN.md)).
+- **A remote import never refuses an op whose anchors still resolve.** An anchor on a character that someone has deleted resolves to the nearest surviving position (from memory of Loro's stable cursors, unverified, `SPK-01`). A composition takes its anchor at `compositionstart`, so text typed for minutes lands there at `compositionend` whatever arrived meanwhile.
+- **A range keeps what it did not see.** `DeleteText` and `SetMark` name both ends. If a remote insert landed inside the range, the delete takes only the characters that were in the view. This is the same identity question as U-1, with the same options, and `SPK-01` settles it.
+- **Refusal is only for a target truly gone or invalid:** the page is purged or its document unavailable, the block's entry was cleared by compaction, an anchor predates a trim point, or the target now takes no text. The code is `CN-OPS-0002`.
+
+**The recovery path. Typed text is never discarded.** A refused batch writes nothing to the notes, and its text goes to a recovery record on this device, shown where the person was typing, and kept across restarts until they choose ([42](42-EDITOR-AND-RENDERING.md)). Later batches that name its provisional anchors refuse with it, in order, and independent batches carry on. A tool write has its own path (`CN-OPS-0004`), since its text is not lost when it is refused.
 
 **Applying a batch.**
 
 | Step | Action | On failure |
 | --- | --- | --- |
-| 1 | Check `base`. A stale base for a touched target is refused | `CN-OPS-0002`: the caller re-reads and re-maps |
-| 2 | Validate every op, in order, against the current Valid state with the earlier ops of the batch applied to a scratch copy | Whole batch refused, nothing written |
+| 1 | Take the batch in `client_seq` order. Resolve every `TextPos`, `after` and id | Target truly gone or invalid: `CN-OPS-0002`, and typed text takes the recovery path |
+| 2 | Validate every op, in order, against the current Valid state with the earlier ops of the batch applied to a scratch copy | Whole batch refused, nothing written. Typed text takes the recovery path |
 | 3 | Compute inverses | Cannot fail after step 2 |
 | 4 | Compile to `Write`s | Cannot fail after step 2. A failure is a bug: `CN-OPS-0099` |
 | 5 | `MergeDoc::apply` runs all writes in one CRDT commit | The document instance is discarded and reloaded from the durable log. Nothing was acknowledged |
@@ -104,11 +121,11 @@ Limits on a batch are in Failure modes. An import too big for one frame becomes 
 
 ### The closed op set
 
-The set is closed. A new op is an operation schema version bump and an ADR. `TextEdit` is `Insert { at, text }` or `Delete { at, len }`, in scalars ([22](22-DATA-MODEL.md)).
+The set is closed. A new op is an operation schema version bump and an ADR. `TextEdit` is `Insert { at, text }` or `Delete { from, to }`, where each position is a `TextPos`.
 
-**Common validation for all ops:** the document exists and is writable; ids have the accepted form; lengths are within limits; `after` names a live entry or is `None`, meaning first. Offsets lie on a scalar boundary inside the text. Each row lists only what it adds. In the inverse column, `prior` means a value read at step 3.
+**Common validation for all ops:** the document exists and is writable; ids have the accepted form; lengths are within limits; `after` names an entry this document has held, or is `None`, meaning first. An `after` that a remote delete has removed is followed along its `del_after` chain, as R-08 places a block, and is not refused. Every `TextPos` resolves. **Live** means visible in the projection, which includes a block, row or item kept by R-08 or R-17 (see Implicit restore). Each row lists only what it adds. In the inverse column, `prior` means a value read at step 3.
 
-**Compiled writes notation.** `text(x)` is a Text, `mlist(x)` a movable list, `map(x).k = v` a map write. `i` is the index resolved from `after` against the current list.
+**Compiled writes notation.** `text(x)` is a Text, `mlist(x)` a movable list, `map(x).k = v` a map write. `i` is the index resolved from `after` against the current list. `at` and `len` in the writes are scalars resolved from `TextPos` at step 4.
 
 #### Tree document
 
@@ -118,9 +135,9 @@ The set is closed. A new op is an operation schema version bump and an ADR. `Tex
 | `MovePage` | `page, parent, after` | Page live; new parent not itself or a descendant | `MovePage` to `prior` parent and sibling | `tree.move(node, parent, i)` |
 | `EditTitle` | `page, edits[]` | Page exists | Text inverse (see Undo) | `text(title)` insert, delete |
 | `SetFavorite` | `page, value` | | `prior` | `node.favorite = v` |
-| `TrashPage` | `page, at_ms` | Not trashed | `RestorePage` | `node.trashed_at_ms = at` |
-| `RestorePage` | `page` | Trashed | `TrashPage` | `node.trashed_at_ms = null` |
-| `PurgePage` | `page` | Trashed for 30 days or more, and every registered device has acknowledged ([56](56-SYNC-DESIGN.md)) | **None.** Not undoable | `tree.delete(node)`. File removal follows in [23](23-STORAGE-FORMAT.md) |
+| `TrashPage` | `page, at_ms` | Not trashed | `RestorePage` | `node.trashed_at_ms = at`, `node.trash_base = version(page document)` |
+| `RestorePage` | `page` | Trashed | `TrashPage` | `node.trashed_at_ms = null`, `node.trash_base = null` |
+| `PurgePage` | `page` | Trashed for 30 days or more; every registered device has acknowledged ([56](56-SYNC-DESIGN.md)); and no edit is concurrent with or later than the trash (see Edits after trash) | **None.** Not undoable | `tree.delete(node)`, `map(purged).page = { final, at_ms }`. File removal follows in [23](23-STORAGE-FORMAT.md) |
 | `SetWorkspace` | `name?, languages?` | | `prior` | `map(workspace)` |
 | `RegisterDatabase` | `database` | Id unused | `SetDatabaseTrashed(true)` | `map(databases).id = {}` |
 | `SetDatabaseTrashed` | `database, at_ms?` | Registered | `prior` | `map(databases).id.trashed_at_ms` |
@@ -133,18 +150,20 @@ The set is closed. A new op is an operation schema version bump and an ADR. `Tex
 | `SetPageView` | `view` | | `prior` | `map(meta).view` |
 | `SetPageLang` | `lang?` | Pattern | `prior` | `map(meta).lang` |
 | `InsertBlock` | `block, after, body, lang?, content, x?` | Id unused in `blocks`. Database or embed target has valid id form, and may dangle. An attachment's blob is complete | `DeleteBlock`, refused if others have since edited (see corners) | Child map and `text`, fields, `mlist(order).insert(i, id)` |
-| `DeleteBlock` | `block` | In order | `RestoreBlock` | `b.del_after = prev`, `b.del_fp = fp(text)`, `mlist(order).delete(idx)` |
-| `RestoreBlock` | `block, after` | In `blocks`, not in order. Only produced by undo, redo or review | `DeleteBlock` | `b.del_fp = null`, `mlist(order).insert(i, id)` |
-| `MoveBlock` | `block, after` | In order; `after` is not the block | `MoveBlock` to `prior` predecessor | `mlist(order).move(from, i)` |
+| `DeleteBlock` | `block` | Live | `RestoreBlock` | `b.del_after = prev`, `b.del_fp = fp(text)`, `mlist(order).delete(idx)` |
+| `RestoreBlock` | `block, after` | In `blocks`, not in order. Only produced by undo, redo, review or implicit restore | `DeleteBlock` | `b.del_fp = null`, `mlist(order).insert(i, id)` |
+| `MoveBlock` | `block, after` | Live; `after` is not the block | `MoveBlock` to `prior` predecessor | `mlist(order).move(from, i)` |
 | `SetBlockKind` | `block, kind, level?, checked?` | A kind without text requires the text to be empty. A heading requires a level | `prior` kind and attrs | `b.type`, `b.level`, `b.checked` |
 | `SetBlockAttr` | `block, attr, value` | One of `checked`, `level`, `lang`, `database`, `page`; right for the type | `prior` | `b.<attr> = v` |
-| `InsertText` | `block, at, text, marks` | Block takes text; text non-empty | Delete those exact characters | `text(b).insert(at, s)`, then `mark` per bit |
-| `DeleteText` | `block, at, len` | Range in bounds | Reinsert runs at an anchor | `text(b).delete(at, len)` |
-| `SetMark` | `block, at, len, mark, on` | Range in bounds, non-empty | `prior` marks per sub-range | `text(b).mark` or `unmark` over the range |
+| `InsertText` | `block, at, text, marks` | Block live and takes text; text non-empty | Delete those exact characters | `text(b).insert(at, s)`, then `mark` per bit |
+| `DeleteText` | `block, from, to` | Block live; both ends resolve | Reinsert runs at an anchor | `text(b).delete(at, len)` |
+| `SetMark` | `block, from, to, mark, on` | Block live; both ends resolve; non-empty | `prior` marks per sub-range | `text(b).mark` or `unmark` over the range |
 | `InsertPageLink` | `block, at, page` | Block takes text; id form. The target may dangle | Delete that character | `text(b).insert(at, U+FFFC)`, then `mark(pagelink = id)` with no expansion |
-| `SplitBlock` | `block, at, new_block, new_kind` | Block takes text; new id unused | `MergeBlocks(new_block, block)` | Read runs after `at`, `text(b).delete` them, and do `InsertBlock` with those runs after `block` |
-| `MergeBlocks` | `block, into` | Both take text; `into` precedes `block` | Delete the appended characters from `into`, then `RestoreBlock(block)` | Append runs to `text(into)`, then as `DeleteBlock(block)` |
-| `ResolveReview` | `target, choice` | A marker is open; `choice` is `KeepMerged` or `KeepVersion(i)` | Reverse text edits, and restore the marker | For a version: minimal text edits to reach that snapshot. For a block kept visible by R-08: keeping it also writes `RestoreBlock`, and removing it is `DeleteBlock`. Then `map(reviews).delete(target)` |
+| `SplitBlock` | `block, at, new_block, new_kind` | Block takes text; new id unused | `MergeBlocks(new_block, block)` | Read runs after `at`, `text(b).delete` them, and do `InsertBlock` with those runs after `block`, setting `new.split_from = block` |
+| `MergeBlocks` | `block, into` | Both take text; `into` precedes `block` | Delete the appended characters from `into`, then `RestoreBlock(block)` | Append runs to `text(into)`, set `b.merged_into = into`, then as `DeleteBlock(block)` |
+| `ResolveReview` | `target, choice` | A marker is open; `choice` is `KeepMerged` or `KeepVersion(i)` | Reverse text edits, and restore the marker | For a version: minimal text edits to reach that snapshot. For a block kept visible by R-08: keeping it also writes `RestoreBlock`, and removing it is `DeleteBlock`. Then `map(reviews).target.resolved[device] = version(document)`. The entry is not deleted (see Marker) |
+
+**Implicit restore.** A block that R-08 keeps visible is live, but it is not in `order`, so an op that needs an index would otherwise have nothing to work with. So **the first op on a resurrected block compiles an implicit `RestoreBlock`:** in the same commit, `mlist(order).insert` at the place R-08 computed, and `b.del_fp = null`, then the op itself. `DeleteBlock` on such a block therefore restores and deletes in one commit, writing a new `del_fp` and `del_after`. An `after` that names such a block restores it too. If two devices do this at once, R-05 keeps the first position. Rows kept by R-17 and items follow the same rule, with `RestoreRow` and `RestoreItem`.
 
 Split and merge copy text, because a block is a separate Text container. So a concurrent edit may end up in an unexpected block. The overlap detector flags every such case, since both devices touched one block.
 
@@ -180,17 +199,18 @@ Concurrent erasure of one stroke by two devices keeps both sets of fragments, so
 | `MoveStatus` | `status, after` | Live | `prior` predecessor | `mlist(status_order).move` |
 | `AddColumn` | `column, after, name, type` | Id unused; type known | `RemoveColumn` | Child map, `mlist(column_order).insert` |
 | `EditColumnName` | `column, edits[]` | Exists | Text inverse | `text(c.name)` |
-| `RemoveColumn` | `column` | Live | Re-show | `c.hidden = true`, `mlist(column_order).delete`. Cells stay |
+| `RemoveColumn` | `column` | Live | `RestoreColumn` | `c.hidden = true`, `mlist(column_order).delete`. Cells stay, and are exported ([22](22-DATA-MODEL.md)) |
+| `RestoreColumn` | `column, after` | Exists and hidden. A concurrent duplicate is harmless | `RemoveColumn` | `c.hidden = false`, `mlist(column_order).insert` |
 | `MoveColumn` | `column, after` | Live | `prior` predecessor | `mlist(column_order).move` |
 | `AddRow` | `row, after, name, status` | Id unused; status live | `DeleteRow` | Child map and Text, `mlist(row_order).insert` |
-| `DeleteRow` | `row` | In order | `RestoreRow` | `del_fp`, `del_after`, `mlist(row_order).delete` |
+| `DeleteRow` | `row` | Live | `RestoreRow` | `del_fp`, `del_after`, `mlist(row_order).delete` |
 | `RestoreRow` | `row, after` | Exists, not in order | `DeleteRow` | Clear `del_fp`, `mlist(row_order).insert` |
-| `MoveRow` | `row, after` | In order | `prior` predecessor | `mlist(row_order).move` |
+| `MoveRow` | `row, after` | Live | `prior` predecessor | `mlist(row_order).move` |
 | `EditRowName` | `row, edits[]` | Exists | Text inverse | `text(r.name)` |
 | `SetRowStatus` | `row, status` | Status live | `prior` | `row.status` |
 | `EditCellText` | `row, column, edits[]` | Column is text | Text inverse | `text(cell:<row>:<column>)` |
 | `SetCellDate` | `row, column, value?` | Column is date; ISO 8601 | `prior` | `row.dates.<column>` |
-| `ResolveReview` | As for pages | | | |
+| `ResolveReview` | As for pages | | | For a cell in a removed column, keeping the cell also writes `RestoreColumn`. Leaving the column removed only resolves the marker |
 
 #### System ops
 
@@ -198,8 +218,10 @@ Written by the engine, with no undo step, and never accepted from `-tools` or th
 
 | Op | Fields | Validation | Inverse | CRDT writes |
 | --- | --- | --- | --- | --- |
-| `MarkReview` | `target, versions[]` | Written only by the detector | None | `map(reviews).target = marker` |
+| `MarkReview` | `target, versions[]` | Written only by the detector | None | `map(reviews).target.versions[device] = version` per version |
 | `WriteCheckpoint` | `kind, label, frontier` | Written only by the history writer | None | `list(versions).push` |
+
+**In a server workspace,** both are ordinary change classes that a device with Edit or Manage writes ([57](57-SERVER-DESIGN.md)). A session below Edit has nothing of its own to merge, so the engine compiles neither, and shows any marker it detects locally. So a returning device is never refused, and never sent to a restored copy, for its merge bookkeeping.
 
 **Op kinds carry no text in the log summary.** The op list is compiled away, and the frame stores only the CRDT update and a count per kind ([23](23-STORAGE-FORMAT.md)). So the log is one truth, and not an op list and a CRDT list that could disagree.
 
@@ -254,7 +276,7 @@ pub enum UndoOutcome { Applied, Partial { skipped: Vec<Skip> }, Refused { why: R
 | U-15 | Undo of an import into an existing notebook | Trashes the new pages | The import was one step. Replacing a page is restored from its checkpoint |
 | U-16 | Undo while a batch from a peer is waiting to import | The import runs first, then the undo | Undo always sees the merged state |
 | U-17 | A restore of an old version | Undoable, as one step | It is an ordinary batch, see History |
-| U-18 | Undo after `ResolveReview` | Text restored and the marker reopened | Choosing is a normal edit |
+| U-18 | Undo after `ResolveReview` | Text restored, and this device's `resolved` entry removed, so the marker reopens | Choosing is a normal edit |
 | U-19 | Crash | The stack is gone, and the notes are not | Stacks are not persisted. Version history is the longer-term recovery |
 
 **Why U-1 is the hard one.** Deleting an anchored range would also delete a peer's characters inside it. So `DeleteOwnSpan` must delete by character identity. `SpanId` wraps the peer and counter range the adapter recorded at insert. Whether Loro's public API allows deleting by that identity is **unverified**. If it does not, the options, tested in `SPK-01`, are:
@@ -279,6 +301,7 @@ pub trait MergeDoc: Sized {
     fn import(&mut self, updates: &[&[u8]], limits: &ImportLimits) -> Result<ImportOutcome, MergeError>;
 
     fn version(&self) -> Version;           // opaque bytes
+    fn has_ops_beyond(&self, v: &Version) -> bool;  // is any op here outside the causal past of v?
     fn updates_since(&self, v: &Version) -> Result<Update, MergeError>;
     fn snapshot(&self, kind: SnapshotKind) -> Result<Vec<u8>, MergeError>;
 
@@ -315,7 +338,7 @@ Rules:
 - **`Update`, `Version`, `Anchor`, `PeerId` and `SpanId` are opaque** to everything above `-merge`.
 - **`-merge` has no product meaning** beyond the layout, repair input, and overlap detection, which 19 assigns to it. "Block", "row" and so on appear only in `layout` and `touched`.
 - **Marks are configured with no expansion for `pagelink`,** and with expansion after for `bold`, `italic`, `code` and `highlight`. Mark ranges for link characters must stay on one character. Unverified against Loro's text style configuration.
-- **Peer ids.** Loro's peer id is a 64-bit value that must not be reused concurrently (from memory of its docs, unverified). A peer id is held per device and rotated on the events listed in [23](23-STORAGE-FORMAT.md). A new peer per session would be safer against mistakes, but grows the peer table with every session, which is one of the things `SPK-01` measures.
+- **Peer ids.** Loro's peer id is a 64-bit value that must not be reused concurrently (from memory of its docs, unverified). **A fresh random peer id is minted each time a notebook is opened for writing,** so counters are never reused after a crash, a restored backup or a copied folder ([23](23-STORAGE-FORMAT.md)). This grows the peer table with every open, and `SPK-01` measures that cost. Import is **not** assumed to merge two branches that share a peer id and overlap in counters, which is unverified and is a named `SPK-01` check. A detected fork is salvaged as a restored copy ([56](56-SYNC-DESIGN.md)).
 
 **Guarded import** (`MRG-02`). Every remote update is hostile (QR-4), and panics are reported in Loro.
 
@@ -323,16 +346,24 @@ Rules:
 | --- | --- | --- |
 | 1 | `-store` has checked framing and limits, and `-crypto` has authenticated it | |
 | 2 | Size check against `ImportLimits` | Over: `CN-MRG-0002` |
-| 3 | Write the poison marker naming the segment ([23](23-STORAGE-FORMAT.md)), durable | A crash or trap now names the culprit on restart |
+| 3 | Add one attempt to the segment's count in the poison marker ([23](23-STORAGE-FORMAT.md)), durable | A crash or trap now names the segment on restart, and is counted |
 | 4 | For updates above 1 MiB, import into a fork. Below that, into the live document | A bad large update cannot hurt the live state |
-| 5 | Run under `catch_unwind` on native | Panic: instance dropped, reloaded from durable state, segment quarantined, `CN-MRG-0003` |
-| 6 | On wasm, a panic traps by default and `catch_unwind` cannot help | The host restarts the worker. Step 3's marker quarantines the segment on restart. Same outcome, slower |
+| 5 | Run under `catch_unwind` on native | Panic: instance dropped, reloaded from durable state, `CN-MRG-0003`. The attempt stays counted, and the segment is retried at the next open or round |
+| 6 | On wasm, a panic traps by default and `catch_unwind` cannot help | The host restarts the worker. Step 3's count is read on restart. Same outcome, slower |
 | 7 | Check the resulting projection against [22](22-DATA-MODEL.md) limits | Over: refuse the fork's result, `CN-MRG-0004`. Under 1 MiB, the limit trips later and is handled as a visible warning |
-| 8 | Clear the marker | |
+| 8 | Remove the segment's count | |
 
 An update with missing dependencies stays pending inside the library (from memory, unverified). It is never an error: the state panel reports the document as waiting on a device (PR-2).
 
-A quarantined segment is not deleted. It is visible in the sync panel ([56](56-SYNC-DESIGN.md)), with the device it came from, and the rest of the notes keep working.
+**Crashes are counted, not assumed to be the segment's fault.** A power cut during an import looks the same as a poisonous segment. So an import that dies leaves the segment in place, nothing is acknowledged, and recovery imports it again. That is safe only because import is idempotent, and whether Loro's is after a crash part-way through is unverified (`SPK-01`).
+
+| Attempts on one segment | Whose segment | Result |
+| --- | --- | --- |
+| 1 or 2 | Any | Retried |
+| 3 | Another device's | Quarantined, `CN-STO-0016` |
+| 3 | **This device's own** | **Never quarantined automatically.** Its document blocks with a visible state, `CN-STO-0021`, and export is offered. Own segments may hold the only copy of an edit |
+
+A quarantined segment is not deleted. It is visible in the sync panel ([56](56-SYNC-DESIGN.md)), with the device it came from, and a person can retry it. The rest of the notes keep working. `ImportOutcome` is per document, because a `MergeDoc` is one document, and [56](56-SYNC-DESIGN.md) keeps that outcome per document within a sync object.
 
 ### Projection
 
@@ -354,9 +385,9 @@ pub struct Delta {
 | Incremental | After an op or an import. `read_changed` gives touched ids, and only those blocks are repaired | Must fit QR-1 |
 | Positional rules (R-05, R-06, R-08) | When `order` or a block's delete record changes | Local to the order list |
 
-`ProjectionRev` is a per-instance counter, not a CRDT version, and is valid only in this process. The editor passes it as `base`.
+`ProjectionRev` is a per-instance counter, not a CRDT version, and is valid only in this process. It tells the editor which projection a `Delta` follows. No op carries it.
 
-**The state hash.** The SHA-256 of the document's canonical package JSON ([36](36-EXPORT-FORMAT.md) serialisation, from Valid) identifies what a person sees. Two replicas with equal hashes show the same notes. `SPK-01`, snapshots and the sync suite all compare this.
+**The state hash** is per document, and is defined in [`-model`](22-DATA-MODEL.md). It covers all CRDT-held state, read as Raw, and it is not package JSON. Two replicas with equal hashes for a document hold the same state for it. `SPK-01`, snapshots and the sync suite all compare this.
 
 Derived work (mirror, search, vectors, graph) subscribes to `Delta` off the typing path and never blocks it (PR-4).
 
@@ -395,14 +426,30 @@ Detection trusts only what `touched` derives from the CRDT history. A device's c
 | Marks | Marks | No | Last writer per mark; nothing is hidden |
 | Same field, different values (`checked`, `level`, `status`, date) | | **Yes** | One value lost as last writer. Show both |
 | Same field, same value | | No | |
+| Text or date cell | Removal of its column | **Yes,** as R-08 | The cell's value is kept, but it is hidden with its column. The marker shows it, and keeping it writes `RestoreColumn` |
 | Different fields | | No | Both kept |
 | Move | Anything except delete | No | No text at stake. Position is one writer's |
 | Kind change | Text, into a kind without text | **Yes** | R-12 or R-13 applied |
 | Split or merge | Text in the same block | **Yes** | Text was copied, so duplication is possible |
-| Both split, or both merged | | **Yes** | This duplicates text, the exact Joplin failure |
+| Both split, or both merged | | **Yes** | This duplicates text, the exact Joplin failure. Detected as below |
 | Ink, item geometry | Same | No | No text at stake |
 
 The same table applies to titles, row names, text cells, date cells and canvas item text.
+
+**Detecting both split or both merged.** The op list is compiled away, so this reads CRDT state. `SplitBlock` sets `split_from` on the new block, and `MergeBlocks` sets `merged_into` on the removed one.
+
+| Case | Test, on `touched` |
+| --- | --- |
+| Both split | `L` holds a new block with `split_from = b`, and `R` holds a different new block with `split_from = b`. Flag `b` and both new blocks |
+| Both merged | `L` and `R` both wrote `merged_into` on one block, whatever the values. This is an exception to "same field, same value". Flag the block and each `into` |
+
+A hostile peer that leaves these fields out still edits `b`'s text, so the Text against Text row flags it anyway.
+
+**Edits after trash.** The detector sees one document at a time, and trash is in the tree while edits are in the page. So this check compares the two: `TrashPage` records the page document's version as `trash_base`, and the page is **edited in the trash** when its document `has_ops_beyond(trash_base)`. That is any edit concurrent with or later than the trash, whatever the clocks say. It is derived, so every device computes it after importing either document, and a missing `trash_base` counts as edited.
+
+- `PurgePage` refuses such a page with `CN-OPS-0009`, on every device, and without a timer that overrides it.
+- Trash and the state panel surface the page, naming the devices that edited it. The person restores it, or trashes it again from what they can now see. That writes a new `trash_base` and starts the 30 days again.
+- A device acknowledges the tree segment holding a trash only after it has written its own edits to that page ([56](56-SYNC-DESIGN.md)), so the check at purge sees them.
 
 **Marker.**
 
@@ -412,13 +459,14 @@ pub struct ReviewMarker {
     pub versions: Vec<ReviewVersion>,        // up to 4
     pub opened_at_ms: i64,                   // informative
 }
-pub struct ReviewVersion { pub device: DeviceId, pub at: Option<Version>, pub runs: Option<Vec<Run>> }
+pub struct ReviewVersion { pub device: DeviceId, pub seen: Version, pub at: Option<Version>, pub runs: Option<Vec<Run>> }
 ```
 
 - **The marker stores the text of each version, up to 64 KiB per version,** so it does not depend on history that may later be trimmed, and it is library-neutral. Above that it stores only `at`, and pins trimming until resolved (`SYN-05`).
-- **It is synced as ordinary CRDT data,** written by `MarkReview`. Two devices detecting the same overlap write the same key. That is harmless, and the versions list is merged by device. A device that had no concurrent edit sees the marker because the other device wrote it, which keeps it in view on every device.
+- **It is synced as ordinary CRDT data,** written by `MarkReview`. Two devices detecting the same overlap write the same target. That is harmless, since each writes its own device key under `versions`. A device that had no concurrent edit sees the marker because the other device wrote it, which keeps it in view on every device.
+- **A resolved review stays resolved.** Deleting the entry would let a late `MarkReview` from an import bring it back, so resolving records state instead: `resolved[device]` holds the version that device resolved through, and `seen` holds the version a `ReviewVersion` was detected at. A marker is **open** while some version's `seen` has ops beyond every `resolved` entry. So a late import of the same overlap stays closed, a new overlap opens it, and two devices resolving at once cannot clobber each other. `-merge` computes this for `RawPage`, because versions are opaque above it. Resolving clears `runs`, and compaction may clear the entry once the floor has passed it ([56](56-SYNC-DESIGN.md)).
 - **It never blocks.** The merged text is already in the block, in the page, in search and in export. Review is a mark in the margin that can be left for ever ([47](47-UX-AND-FEATURE-MAP.md), `SYN-04`).
-- **Choosing a version** is `ResolveReview`, a normal undoable edit. "Keep merged" just clears the marker.
+- **Choosing a version** is `ResolveReview`, a normal undoable edit. "Keep merged" only records the resolved state.
 
 **A burst.** After a 90-day merge, the first 500 markers per document are written. The rest are counted in one page-level marker, "N more blocks changed on both devices", and listed in the merge event. They are never dropped silently. Detection runs off the typing path with progress in the state panel (PR-2).
 
@@ -439,7 +487,7 @@ ADR-005 has no `transform` function, and `-ops` must never own one (19). Reasons
 
 | Place | Instead |
 | --- | --- |
-| The editor maps a DOM change against a view that a remote import has just moved | The op carries `base`. A stale base is refused with `CN-OPS-0002`, and the editor re-maps. The engine is single-threaded per notebook, so the window is small. A remote patch never lands inside an active composition; it waits ([42](42-EDITOR-AND-RENDERING.md), `I18N-03`) |
+| The editor maps a DOM change against a view that a remote import has just moved | The op carries anchors and `client_seq`, and lands by identity, so there is nothing to re-map. A remote patch still never lands inside an active composition; it waits ([42](42-EDITOR-AND-RENDERING.md), `I18N-03`). If the target is truly gone, `CN-OPS-0002` and the recovery path keep the text |
 | The assistant holds a block while waiting for approval, and the block changes | The tool's write carries the block's fingerprint, and a mismatch refuses with `CN-OPS-0004`. The tool re-reads and re-asks ([63](63-AGENT-TOOLS-AND-MCP.md)). Text is never applied by position against moved content |
 | Undo against a moved document | Anchors, identity and tokens, as above. If `SPK-01` finds this is really a hand-written transform, that counts against the design |
 
@@ -522,17 +570,18 @@ The keystroke flow in [02](02-ARCHITECTURE.md) shows the fsync before the projec
 | Code | Meaning |
 | --- | --- |
 | `CN-OPS-0001` | Validation failed; the details name the op and field |
-| `CN-OPS-0002` | Stale `base`: re-read and re-map |
+| `CN-OPS-0002` | The op's target is gone or invalid. Typed text goes to the recovery path ([42](42-EDITOR-AND-RENDERING.md)) |
 | `CN-OPS-0003` | Batch too large: more than 10,000 ops or 16 MiB of text. Split into a group |
 | `CN-OPS-0004` | Stale fingerprint on a tool write |
 | `CN-OPS-0005` | Op schema version newer than this build |
 | `CN-OPS-0006` | System op from a caller that may not issue it |
 | `CN-OPS-0007` | Undo refused; the reason is included |
 | `CN-OPS-0008` | Purge refused: the 30 days are not up, or a device has not acknowledged |
+| `CN-OPS-0009` | Purge refused: the page has an edit concurrent with or later than its trash |
 | `CN-OPS-0099` | Compile failed after validation passed. A bug, reported, and the document is reloaded |
 | `CN-MRG-0001` | Could not load a document. Its segments stay, and the document shows as unavailable |
 | `CN-MRG-0002` | Update over the import limit: 256 MiB per update, proposal |
-| `CN-MRG-0003` | Import panicked or trapped. Segment quarantined |
+| `CN-MRG-0003` | Import panicked or trapped. Counted against the segment, retried, and handled after 3 attempts as in Guarded import |
 | `CN-MRG-0004` | Merged state would break a [22](22-DATA-MODEL.md) limit |
 | `CN-MRG-0005` | Update predates this document's trim point. Goes to the restored-copy path (`SYN-05`) |
 | `CN-MRG-0006` | Library invariant failure or unexpected error |
@@ -541,7 +590,7 @@ The keystroke flow in [02](02-ARCHITECTURE.md) shows the fsync before the projec
 
 | Failure | What happens |
 | --- | --- |
-| Two sessions share a peer id, from a copied folder or a restored backup | Possible corruption; the effect on Loro is unverified. Install id check and rotation in [23](23-STORAGE-FORMAT.md) reduce it, and `SPK-01` injects it |
+| Two sessions share a peer id | With a fresh peer per open, this takes a process cloned while running, such as a resumed VM snapshot. The effect on Loro is unverified, and `SPK-01` injects it. The chain check notices, and the divergent branch becomes a restored copy ([56](56-SYNC-DESIGN.md)) |
 | Divergence between replicas in the field | Devices compare state hashes, if [56](56-SYNC-DESIGN.md) adopts this. A mismatch is reported in the state panel and never papered over by another merge |
 | Memory growth, as reported for Loro and others | Documents are unloaded when not in view, and wasm memory does not shrink, so the host recycles the worker at a threshold. `SPK-01` measures it |
 | Review fires too often | Text against text, same block, is the rule. A tuned threshold or a sentence-level refinement is the response, based on `SPK-01` (RISK-03) |
@@ -599,7 +648,12 @@ What the layer is expected to earn, if it stays: `del_fp` and `del_after`, split
 | Layout rule L-1 holds | Generated concurrency on every text-bearing field: no text vanishes | Not built |
 | Only `-merge` names `loro` | `check-crate-deps.py` (`GOV-04`) | Not built |
 | Detector matches labelled histories, and live typing never flags | `MRG-03` | Not built |
-| Restore round trip | Restoring then comparing the state hash with the checkpoint (`STO-05`) | Not built |
+| Restore round trip | Restoring, then comparing the Valid page with the checkpoint's. The state hash differs by design, because restore writes new CRDT state (`STO-05`) | Not built |
+| A long composition survives remote imports | Composition held while updates arrive, with no refusal and no loss; own in-flight ops never go stale (`OPS-01`, `I18N-03`) | Not built |
+| A refused op's typed text reaches the recovery path, with later dependent batches refused in order | One test per kind of gone target | Not built |
+| A crash during import quarantines nothing before the third attempt, and never an own segment | Injected crashes and traps (`MRG-02`) | Not built |
+| A page edited in the trash cannot be purged | Generated histories across tree and page documents | Not built |
+| A resolved review does not reopen on late import, and a new overlap does open it | Shuffled delivery of `MarkReview` and `ResolveReview` | Not built |
 | Package written from any merged state passes the schema | Generated | Not built |
 
 ### SPK-01: does Loro survive years of notes?
@@ -637,10 +691,14 @@ What the layer is expected to earn, if it stays: `del_fp` and `del_after`, split
 | Memory over the run, including wasm's peak and growth after repeated import | The leak reports |
 | Import cost for the 90-day merge | Whether the catch-up plan holds |
 | Time for one commit plus exporting its update | Whether it fits the typing path |
-| Peer table growth, stable against per-session peers | Picks the peer id policy |
+| Peer table growth with a fresh peer per open | The cost of the peer id policy. A cost too high to carry goes back to the owner, with the fork handling unchanged |
 | Root container scaling, on the text cells | Rule L-1 |
 | `at()` fork cost, on old versions | Detector and history |
-| Whether characters can be deleted by identity | U-1 |
+| Whether characters can be deleted by identity | U-1, and ranges that keep what they did not see |
+| Stable cursors: whether an anchor survives remote edits and deletes, what it then resolves to, and the cost after years | Ops land by anchor |
+| What import does with two branches sharing a peer id and overlapping in counters: merge, error or corruption | Not assumed to merge. The answer says how urgent the running-clone case is |
+| Whether import stays idempotent after a crash part-way through | Crashes are retried, not quarantined |
+| Whether reading Raw gives the same order on every replica | The state hash |
 | All undo corners, with our inverses and with Loro's `UndoManager` | The argument against the design |
 | Number of ops that are thin | The drop rule for `-ops` |
 | Whether encoded updates are the same bytes on native and wasm | `STO-03` |

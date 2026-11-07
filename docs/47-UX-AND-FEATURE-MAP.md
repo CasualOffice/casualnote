@@ -66,14 +66,14 @@ Every screen is in the pseudo-locale gate in each of these states ([50](50-INTER
 | **Connections** | Local graph | "No connections yet." | Text line | Link to full graph | Yes |
 | **Node details** | Page, tag, row or person with neighbours | Not reachable | Text line | "This item no longer exists" | Yes |
 | **Assistant** | Log, composer, model line | AI off: one sentence saying it is off and nothing leaves the device, with a Settings link. On: starter prompts as plain text | Stop button, streamed text | Named cause: key refused, model not running, network down, provider limit. Message kept for retry. Never a generic "Something went wrong" | Yes |
-| **Approval card** | Exactly what will change; Allow, Decline | No state | No state | Stale target: "This page changed. Ask again" | Yes |
+| **Approval card** | Exactly what will change, who can read the target, and which pages were read this turn, all from the engine ([63](63-AGENT-TOOLS-AND-MCP.md)); Allow, Decline. Large text: bounded preview and "Review all text". Text could reach more readers: a distinct warning, and Allow disabled until the full preview has been read to its end | No state | No state | Stale target or changed audience: "This page changed. Ask again" | Part: no audience or sources |
 
 ### Views in tabs
 
 | Screen | Normal | Empty | Loading | Error | In prototype |
 | --- | --- | --- | --- | --- | --- |
 | **Knowledge graph** | Nodes, filters, search; links and similarity kept visibly apart ([61](61-KNOWLEDGE-GRAPH.md)) | "Link two pages to start the graph" | Text line (PERF-10) | "Could not build the graph." Pages unaffected | Yes |
-| **Agent access** | Connect instructions, tool list, recent calls ([63](63-AGENT-TOOLS-AND-MCP.md)) | "No recent calls" | No state | Server not installed, or path refused | Yes, command marked as planned |
+| **Agent access** | Connect instructions, tool list, recent calls ([63](63-AGENT-TOOLS-AND-MCP.md)). The setup text says plainly that a note can make a client read everything under its roots and send it out, that `--read-only` does not stop this, and to use one `--root` per notebook | "No recent calls" | No state | Server not installed, path refused, or encrypted notebook with no opt-in | Yes, command marked as planned |
 | **Settings** | Language, theme, assistant, search model, export and import, storage, sync, shortcuts, pen, about | No state | Per section | Per section, in place | Part |
 | **Trash** | Items with their date and days left. Restore, delete forever | "Trash is empty" | Text line | Named | Part: sidebar list |
 | **Version history** ([24](24-OPERATIONS-AND-MERGE.md)) | Timeline with named merges, preview, restore | "No earlier versions yet" | Text line | "This version cannot be read." Others remain | No |
@@ -84,9 +84,9 @@ Every screen is in the pseudo-locale gate in each of these states ([50](50-INTER
 
 | Screen | Normal | Empty | Loading | Error | Phase |
 | --- | --- | --- | --- | --- | --- |
-| **Model download** ([62](62-AI-ASSISTANT-AND-PROVIDERS.md)) | Name, size, licence first; Download, Pause, Resume, Use, Remove | "No models yet" | Real progress | Hash failed, disk full, network lost: resumable. Nothing is used until verified | 6, simulated in prototype |
-| **Provider connect** | Provider list, endpoint, key, what is sent where | "Assistant is off" | "Checking" | Named, per provider | 5, preview in prototype |
-| **Sync state** ([56](56-SYNC-DESIGN.md)) | Per device: last seen, what is unsynced; per storage: state | "Sync is off. Your notes stay on this device" | Live | Every fault named in words (PR-2) | 7 |
+| **Model download** ([62](62-AI-ASSISTANT-AND-PROVIDERS.md)) | Name, size, licence first; Download, Pause, Resume, Use, Remove. Add from a local file only, with a warning. States when this computer cannot sandbox the model (`CN-DSK-0019`). First start of a file: native confirmation on desktop | "No models yet" | Real progress, including the hash check before each start | Hash failed, disk full, network lost: resumable. Nothing is used until the whole file is verified. After a crash, Start: never an automatic restart | 6, simulated in prototype |
+| **Provider connect** | Provider list, endpoint, key, what is sent where. Web: the key is kept for this session only, and "Remember on this browser" is an explicit choice with a plain warning. Desktop: a native confirmation shows the real address, and the key goes in a separate small window | "Assistant is off" | "Checking" | Named, per provider. A declined confirmation changes nothing | 5, preview in prototype |
+| **Sync state** ([56](56-SYNC-DESIGN.md)) | Per device: last seen, what is unsynced; per storage: state. Desktop: connecting storage shows a native confirmation with the real address | "Sync is off. Your notes stay on this device" | Live | Every fault named in words (PR-2) | 7 |
 | **Merge review** | Marker in the page, both versions side by side, keep either or both | Marker absent | Text line | "Cannot compare" with both kept | 7 |
 | **Restored copy notice** | A device past a limit gets a visible copy (PR-1) | No state | No state | No state | 7 |
 | **Share and permissions** ([57](57-SERVER-DESIGN.md)) | People, roles, link | "Only you" | Text line | Refused, by whom | 8 |
@@ -102,6 +102,7 @@ Every screen is in the pseudo-locale gate in each of these states ([50](50-INTER
 | **Storage full** | Status line and banner, with what is unsaved, and ways out. Editing stays possible in memory, and export is offered |
 | **Save failed** (`CN-EDT-0005`) | Status line in words, not a toast alone |
 | **Engine stopped** (`CN-EDT-0007`) | Editing pauses, with a restart. Unsaved text remains visible and can be copied |
+| **Recovered text** (`CN-EDT-0001`) | A target was truly gone, so typed text could not be placed. A notice at that place, or at the top of the page or workspace, holds the text. Insert here, Copy, Move to a new page, Discard. It stays across restarts until the person chooses ([42](42-EDITOR-AND-RENDERING.md)) |
 | **Newer format than this app** | Workspace opens read-only, with a message to update, and no write. Never a silent upgrade |
 | **Offline** | Nothing changes for local use. Assistant says its provider is unreachable. A local model works |
 | **Second tab on the web** | Works, or says clearly which tab owns writing ([44](44-DESKTOP-SHELL.md), [23](23-STORAGE-FORMAT.md)) |
@@ -177,6 +178,7 @@ Phase is when it first ships. Keys are in the next table.
 | `edit.find_next` | Next match | 2 | `WEB-03` |
 | `edit.find_previous` | Previous match | 2 | `WEB-03` |
 | `edit.show_save_state` | Show what is saved and where | 2 | `WEB-02` |
+| `edit.recovered_text` | Show recovered text | 2 | `WEB-03` |
 | `block.to_paragraph` | Turn into paragraph | 2 | `WEB-04` |
 | `block.to_heading_1` | Turn into heading 1 | 2 | `WEB-04` |
 | `block.to_heading_2` | Turn into heading 2 | 2 | `WEB-04` |
@@ -246,6 +248,7 @@ Phase is when it first ships. Keys are in the next table.
 | `assistant.stop` | Stop the reply | 5 | `AST-01` |
 | `assistant.approve` | Allow a pending write | 5 | `TOOL-02` |
 | `assistant.decline` | Decline a pending write | 5 | `TOOL-02` |
+| `assistant.review_change` | Review all text of a pending write | 5 | `TOOL-02` |
 | `assistant.clear` | Clear the conversation | 5 | `AST-01` |
 | `assistant.toggle` | Turn the assistant on or off | 5 | `AST-01` |
 | `assistant.connect_provider` | Connect a provider | 5 | `AST-03` |
@@ -256,7 +259,7 @@ Phase is when it first ships. Keys are in the next table.
 | `model.use` | Use this model | 6 | `DSK-03` |
 | `model.remove` | Remove a local model | 6 | `DSK-02` |
 | `agent.open` | Open Agent access | 5 | `MCP-01` |
-| `agent.copy_connect` | Copy the connect command | 5 | `MCP-01` |
+| `agent.copy_connect` | Copy the connect command, after showing the setup text | 5 | `MCP-01` |
 | `export.page_package` | Export this page as a package | 2 | `PKG-05` |
 | `export.workspace_package` | Export the workspace | 2 | `PKG-05` |
 | `export.page_markdown` | Export as Markdown | 2 | `PKG-05` |
@@ -408,6 +411,8 @@ The owner admires SiYuan, AppFlowy and AFFiNE (instruction 4, with "Chinese repo
 | Fault injection shows each storage state as designed | PR-1, PR-2 | `STO-01`, `SYN-03` |
 | Shortcuts on an Arabic and a Hindi layout | Layout independence | `WEB-04` |
 | Shortcuts do not fire during composition | Input methods | `I18N-03` |
+| A refused batch shows the recovered text state, with every typed character | PR-1 | `WEB-03` |
+| The approval card's audience, sources and widening states, in Arabic and by keyboard | SEC-A08, QR-5 | `TOOL-02` |
 | Command registry gate with seeded violations | All verbs registered | Row proposed |
 | New workspace opens to an empty page with no sample content | No tutorial page | `WEB-02` |
 

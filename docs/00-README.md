@@ -1,6 +1,6 @@
 # Documentation index
 
-**Status: Phase D, design, awaiting owner review.** No product code exists. Numbers are targets until a prototype or test says otherwise, and a "Proposed" decision can still change. Read in this order if new: 01, 02, 19, then the area you care about.
+**Status: building (owner instruction 11).** The engine and web editor run. Everything else here is design. Numbers are targets until a prototype or test says otherwise, and a "Proposed" decision can still change. Read in this order if new: 01, 02, 19, then the area you care about.
 
 ## Product and planning
 

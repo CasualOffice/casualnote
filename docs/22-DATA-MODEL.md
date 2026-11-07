@@ -148,7 +148,7 @@ pub struct MarkSet(u8);  // bold = 1, italic = 2, code = 4, highlight = 8
 3. Marks serialise in the fixed order `bold, italic, code, highlight`, which matches the prototype.
 4. `PageLink` has no marks, since the schema has nowhere to put them.
 
-**Offsets** in ops count Unicode scalars in the block's text, and a `PageLink` counts as one. They do not count bytes, UTF-16 units or grapheme clusters. Scalars are correct here because a person deleting one combining mark in Hindi or Arabic must be able to do so. The DOM reports UTF-16, and the `-wasm` bridge converts. Whether an offset lands on a sensible caret position is the editor's concern ([42](42-EDITOR-AND-RENDERING.md)).
+**Offsets** count Unicode scalars in the block's text, and a `PageLink` counts as one. Ops land by `TextPos` ([24](24-OPERATIONS-AND-MERGE.md)), so an offset is used only to mint an anchor, and as the index of a provisional one. They do not count bytes, UTF-16 units or grapheme clusters. Scalars are correct here because a person deleting one combining mark in Hindi or Arabic must be able to do so. The DOM reports UTF-16, and the `-wasm` bridge converts. Whether an offset lands on a sensible caret position is the editor's concern ([42](42-EDITOR-AND-RENDERING.md)).
 
 **Representation inside CRDT text.** A page link is the character U+FFFC with a `pagelink` mark holding the target id. A U+FFFC that has no `pagelink` mark is literal text the person pasted, and stays literal. This is a storage detail: `Run` never exposes U+FFFC to its readers.
 
@@ -237,7 +237,7 @@ pub struct Database {
 pub struct Status { pub id: StatusId, pub name: String, pub group: StatusGroup, pub extras: Extras }
 pub enum StatusGroup { Todo, Active, Review, Done }
 
-pub struct Column { pub id: ColumnId, pub name: String, pub ty: ColumnType, pub extras: Extras }
+pub struct Column { pub id: ColumnId, pub name: String, pub ty: ColumnType, pub hidden: bool, pub extras: Extras }
 pub enum ColumnType { Text, Date }
 
 pub struct Row {
@@ -252,6 +252,7 @@ pub struct Row {
 - **A status's colour is not stored.** The group decides it, as in the prototype: `todo` grey, `active` blue, `review` amber, `done` green. Software reads progress from `group` and never from the user's own name for the status, which may be in any language.
 - **An empty value is an absent key.** The prototype omits empty values on export, so `""` from an imported package is normalised away.
 - **Date values are strings.** Ops require ISO 8601 (`2026-11-20`, or a date and time). A package may hold any string in a date column, and it is kept as written and shown as text. It is not coerced and not dropped.
+- **A removed column is hidden, not deleted.** Its cells stay, it can be restored (`RestoreColumn`), and it is exported marked hidden. `columns` holds live columns in order, then hidden ones by id.
 - **Name and status are built-in,** not entries in `columns`, matching the schema.
 - **Column type cannot change in version 1.** There is no op for it.
 
@@ -324,7 +325,7 @@ pub enum SampleRef {
 
 Decoding is bounded: `count` is checked against the limit before any allocation, and trailing bytes are refused (`CN-MOD-0007`). Decoding then re-encoding gives the same bytes, and the same encoding on native and web.
 
-Export expands samples to `[x, y, pressure]`, as the schema requires. A pressure outside 0 to 1 in an imported package is clamped and listed in the report.
+Export expands samples to `[x, y, pressure]`, one line per record in `ink/<page-id>.jsonl`, as the schema requires. A pressure outside 0 to 1 in an imported package breaks the schema, and is refused (`CN-PKG-0010`). A stroke at the sample limit fits a line: 65,536 samples at about 40 bytes each is about 2.6 MiB, against a line limit of 16 MiB.
 
 ### Invariants
 
@@ -390,7 +391,7 @@ Applied in the order listed.
 | R-16 | No live status | The hidden status with the lowest id is used. If none ever existed, a constant `{id: "s0", name: "", group: todo}` |
 | R-17 | A row is deleted and `del_fp` differs from the fingerprint of its name and text cells | As R-08, for rows, using row order |
 | R-18 | Two tree nodes claim one `PageId` | The node with the lowest neutral node key keeps the id. The other gets `<id>~<node-key>` as a derived id, and stays visible |
-| R-19 | A page document exists with no tree node | Shown under a virtual `Recovered` parent. A tree node with no document yet is an empty page marked pending |
+| R-19 | A page document exists with no tree node | In order: if its id is in the tree's `purged` map, it is **not shown and never resurrected,** and any edit past the tombstone goes to a restored copy through `-sync` ([56](56-SYNC-DESIGN.md)). If it holds no block and no text, it is hidden: this is the orphan an interrupted create leaves ([24](24-OPERATIONS-AND-MERGE.md)), and compaction removes it. Otherwise it is shown under a virtual `Recovered` parent, since its tree node may still be on the way. A tree node with no document yet is an empty page marked pending |
 | R-20 | An ink or attachment blob is not present | Record kept, drawn as missing. It is never removed |
 | R-21 | A database page has no database id | Kept, shown as removed. A `kind` overwritten by a hostile write cannot be told from a real value and is read as written |
 | R-22 | `lang` does not match the pattern | Treated as absent, value left in place |
@@ -413,6 +414,29 @@ place(block):
 ```
 
 Formatting and attribute changes do not change `del_fp`, so a concurrent `bold` does not undo a delete. Only text can resurrect a block. The result is deliberate: PR-1 says merged text is never hidden, so a delete loses to an unseen edit and the person decides in review.
+
+### The state hash
+
+Replicas, snapshots and the test suites compare documents through one hash, defined here because it needs no library. It is **not** the package JSON, which leaves out most of what a merge can get wrong, and which would have to read blobs.
+
+```rust
+pub const STATE_HASH_VERSION: u16 = 1;
+/// One document. Pure, and subject to the same rules as repair.
+pub fn state_hash(doc: &RawDocument) -> Sha256;   // RawTree, RawPage or RawDatabase
+```
+
+| Rule | Detail |
+| --- | --- |
+| Scope | One document. A page's title lives in the tree document, so the tree's hash covers it. Nothing is hashed across documents |
+| Input | **Raw, before repair,** so a new repair rule cannot look like divergence between two versions of the app |
+| Covers | All CRDT-held state: order lists, entries not in order, `del_fp`, `del_after`, `split_from`, `merged_into`, hidden statuses and columns, cells of removed columns, reviews with their `resolved` entries, the `versions` list, `trash_base`, `purged`, and `x-` values |
+| Samples | **By hash, never by content.** `Inline` contributes the SHA-256 of its bytes, and `Blob` its `sha256` and `count`. No blob is opened or fetched, so a missing blob gives no false divergence |
+| Leaves out | CRDT history, peer ids and counters, `ProjectionRev`, and anything per device |
+| Empty | An empty Text and a Text that was never written hash the same, by being omitted, so a cell's root container that exists on one replica and not yet on another differs in nothing |
+| Encoding | SHA-256 over canonical CBOR (RFC 8949 §4.2) of `[STATE_HASH_VERSION, class, id, body]`. Map keys sort as CBOR says, lists keep their order, text is its runs in order, and opaque versions are byte strings |
+| Change | A new encoding bumps `STATE_HASH_VERSION`. A snapshot with another version is not compared, and is rebuilt ([23](23-STORAGE-FORMAT.md)) |
+
+Equal hashes mean equal state, and so the same repair result from the same build. They say nothing about history, so the compaction check compares versions as well ([23](23-STORAGE-FORMAT.md)).
 
 ### Mapping to the package
 
@@ -444,22 +468,22 @@ Version 1 of the schema is the constraint. Rows marked **x-** use the extension 
 | `Database` | `type: database`, `database` | `db` | |
 | `Embed` | `type: embed`, `page` | `embed` | |
 | `Attachment` | **x-** `type: paragraph`, `content` holds the caption or file name, plus `x-casualnote-attachment: { sha256, name, mediaType, bytes }`. File at `assets/<sha256>.<ext>` | None | A reader that ignores `x-` still sees the name as text and the file in `assets/` |
-| `Unknown` | **x-** `type: paragraph`, `content: []`, plus `x-casualnote-unknown: { type, raw }` | None | Re-import restores it. A newer writer may have newer rules |
+| `Unknown` | Written back as read: its own `type` and the fields in `raw` | None | The schema allows a type it does not list, and a reader keeps and reports it ([36](36-EXPORT-FORMAT.md)). A newer writer may have newer rules |
 | `Run::Text` | `{ "text", "marks" }`, with `marks` omitted when empty | `{ t, b, i, c, h }` | |
 | `Run::PageLink` | `{ "page": id }` | `{ ref }` | |
 | `Canvas` | `page.canvas`, omitted when `None` | `canvas` | New pages get the default note placement, x 80, y 60, width 620 |
 | `Canvas.extras` | `canvas["x-..."]` | | |
 | `NotePlacement` | `canvas.note` `{x, y, width}` | `note` `{x, y, w}` | `note` allows no `x-` fields |
 | `CanvasItem` | `canvas.items[]`, in z-order | `{ x, y, w, h, c, text }` | `text` is always present, `""` when empty |
-| `InkRecord::Stroke` | `canvas.ink[]`: `{ id, kind, color, width, points }` | `{ kind: pen or hi, color, w, points }` | `points` expanded from `samples`. `origin` and `bbox` are not exported, so a re-imported fragment stands alone |
-| `InkRecord::Arrow` | `{ id, kind: arrow, from, to }` | `{ arrow: 1, a, b }` | |
+| `InkRecord::Stroke` | One line of `ink/<page-id>.jsonl`, named by `canvas.inkFile`: `{ id, kind, color, width, points }`, in z-order | `{ kind: pen or hi, color, w, points }` | `points` expanded from `samples`. `origin` and `bbox` are not exported, so a re-imported fragment stands alone |
+| `InkRecord::Arrow` | One line of the same file: `{ id, kind: arrow, from, to }` | `{ arrow: 1, a, b }` | |
 | PDF background (`INK-04`) | **x-** `canvas["x-casualnote-background"]`, a `FileRef` | None | Not yet modelled beyond this. [43](43-CANVAS-AND-INK.md) owns it |
 | `Milli` | JSON number, up to 3 decimals, no trailing zeros | Rounded by `num()` | Integers print with no point |
 | `Database` | `databases/<id>.json` | `S.dbs` | All registered databases on a workspace export; only referenced ones on a page export |
 | `Database.name`, `default_view` | `name`, `defaultView` | `name`, `view` | |
 | `Status` | `statuses[]`: `{ id, name, group }` | `{ id, name, c }` | |
-| `Column` | `columns[]`: `{ id, name, type }` | `{ id, name, type? }` | |
-| `Row` | `rows[]`: `{ id, name, status, values }` | `{ id, name, status, <col>: value }` | Keys for removed columns are not exported. On import, keys naming no column are listed in the report and dropped |
+| `Column` | `columns[]`: `{ id, name, type, hidden }`, with `hidden` omitted when false | `{ id, name, type? }` | Hidden columns are exported, marked hidden. Import restores them hidden, as `AddColumn` then `RemoveColumn` |
+| `Row` | `rows[]`: `{ id, name, status, values }` | `{ id, name, status, <col>: value }` | Keys for hidden columns are exported. On import, keys naming no column are listed in the report and dropped |
 | `Extras` | `x-` keys on the same object | None | Preserved on rewrite, as [36](36-EXPORT-FORMAT.md) requires |
 | `DeviceId`, CRDT state, versions, undo | Not exported | | ADR-017 |
 
@@ -494,7 +518,8 @@ All numbers are proposals. Op refusals use `CN-OPS-*` ([24](24-OPERATIONS-AND-ME
 | `CN-MOD-0006` | A string attribute is too long | Title, names, cell: 1 MiB. `lang`: 64 bytes. `color`: 64 bytes |
 | `CN-MOD-0007` | Encoded samples are malformed | |
 | `CN-MOD-0008` | A stroke or page has too much ink | 65,536 samples per stroke, with longer gestures split into several strokes ([43](43-CANVAS-AND-INK.md)); 200,000 ink records per page |
-| `CN-MOD-0009` | A page or database's package JSON would exceed 64 MiB, the [36](36-EXPORT-FORMAT.md) limit | Warned at 48 MiB, refused at 64 MiB. Heavy ink is the likely cause, since it expands to JSON |
+| `CN-MOD-0009` | A page or database's package JSON would exceed 64 MiB, the [36](36-EXPORT-FORMAT.md) limit | Warned at 48 MiB, refused at 64 MiB. Ink does not count, since it has its own file |
+| `CN-MOD-0012` | A page's exported ink file would exceed 2 GiB, the [36](36-EXPORT-FORMAT.md) entry limit | Warned at 1.5 GiB. Export refuses by name and never drops the ink |
 | `CN-MOD-0010` | A database has too many columns, statuses or rows | 512 columns, 128 statuses, 1,000,000 rows |
 | `CN-MOD-0011` | A canvas has too many items | 100,000 |
 
@@ -505,7 +530,7 @@ All numbers are proposals. Op refusals use `CN-OPS-*` ([24](24-OPERATIONS-AND-ME
 | A lone surrogate in imported JSON | Rust strings cannot hold one. The import refuses the file with `CN-PKG-0010` |
 | NUL or control characters in text | Stored as written. Ids refuse them, text does not |
 | A hostile `x-` value | Size-limited by the file limit, stored as an opaque JSON string, and never interpreted or rendered |
-| R-08 could resurrect a block a person wanted gone | Deleting it again writes a new `del_fp`, and it goes. It is visible once, by design |
+| R-08 could resurrect a block a person wanted gone | Deleting it again goes through the implicit `RestoreBlock` ([24](24-OPERATIONS-AND-MERGE.md)) and writes a new `del_fp`, and it goes. It is visible once, by design. Any other first op on it restores it the same way |
 | The 8-byte fingerprint collides | A concurrent edit could then be hidden. Odds are about 1 in 2^64 per delete against edit. Accepted, and its text remains in CRDT state and in version history |
 | Direction differs between `base_direction` and `dir="auto"` | A failing test, not a runtime concern |
 
@@ -532,6 +557,7 @@ All numbers are proposals. Op refusals use `CN-OPS-*` ([24](24-OPERATIONS-AND-ME
 | Same Raw gives the same Valid on native and wasm | The same generated corpus on both | Not built |
 | Repair is idempotent and never writes | Property test; a counting fake of `-merge` sees no writes | Not built |
 | No rule discards text | Property test: every scalar in Raw text appears in Valid, except the page-link character | Not built |
+| Equal Raw gives an equal state hash, on native and wasm, with blobs present or missing | Generated values | Not built |
 | Every Valid value exports to JSON that passes the schema and `tools/cnotepack.py` | Generated values, reader run in CI | Not built |
 | Round trip gives identical bytes | Sample package, then generated workspaces | Not built |
 | Text in each launch language comes back unchanged, and direction is right | Per-language test sets (`DEC-09`) | Not built |

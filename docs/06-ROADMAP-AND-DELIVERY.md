@@ -21,6 +21,12 @@
 
 **The order is deliberate.** The engine comes before UI, as the owner set for OpenPresent. Sync ships late, but its seams (segments, device ids, the merge layer) exist from Phase 1. Languages start in Phase 2 and are never added later.
 
+## Waivers
+
+| ID | Criterion not met | Risk | Accepted | If it fails |
+| --- | --- | --- | --- | --- |
+| W-1 | Building started before Phase D and Phase 0 closed: no CI, `SPK-01` and `SPK-02` not formally reported, Proposed ADRs open | Loro or DOM editing may yet fail on long histories or large pages, and force rework in `-merge` or the editor | Owner, instruction 11, 2026-11-07 | Fix in place. Phases still cannot close without their criteria |
+
 ## Phase D — Design
 
 - **Gives:** an agreed design, so later phases need no do-over.
@@ -41,7 +47,7 @@
 - **Closes when:**
   - [ ] CI is green on Linux, macOS and Windows, and a seeded violation is seen failing each job.
   - [ ] `SPK-01` reported, and ADR-005, ADR-006 and ADR-010 settled.
-  - [ ] `SPK-02` reported in the launch languages, and ADR-007 and ADR-025 settled.
+  - [ ] `SPK-02` reported in the launch languages, and ADR-007 and ADR-025 settled. It includes desktop webviews and the Tauri bridge (`FND-24`): WKWebView locally, WebKitGTK and WebView2 through CI where possible, so a failure surfaces before the editor is built.
   - [ ] Licence gate fails on a seeded GPL dependency.
   - [ ] Owner sign-off.
 
@@ -69,12 +75,13 @@
   - [ ] The pseudo-locale finds no untranslated string, and the Arabic run passes (PR-5).
   - [ ] Input-method tests pass for Chinese, Japanese and Korean.
   - [ ] An accessibility audit passes, screen reader included (QR-5).
+  - [ ] Pasted and dropped images store through `FIL-01`, which moves here from Phase 4 because paste and canvas both need it.
   - [ ] Owner uses it for real notes, and signs off.
 
 ## Phase 3 — Canvas and ink
 
 - **Gives:** the same page as a canvas, with pen.
-- **Opens:** Phase 2 closed; `SPK-03` run on real devices.
+- **Opens:** Phase 2 closed; `SPK-03` run on real devices, using its own throwaway harness, since `INK-01` and `INK-04` are built in this phase.
 - **Closes when:**
   - [ ] Switching views loses nothing, by a round-trip test.
   - [ ] Merge tests include ink and canvas.
@@ -89,7 +96,7 @@
   - [ ] QR-2 holds, and each launch language has a passing search test set.
   - [ ] Related notes beat the word-overlap baseline on a labelled set, in English and Chinese at least.
   - [ ] Deleting every index and vector and rebuilding gives the same results.
-  - [ ] Attachments resume after injected failures, and appear in export.
+  - [ ] Attachments resume after injected failures across a restart, and appear in export.
   - [ ] Owner sign-off.
 
 ## Phase 5 — Assistant and agents
@@ -101,6 +108,8 @@
   - [ ] With AI off, a network capture shows no outbound request.
   - [ ] The MCP server passes a client conformance run, and `--root` escapes are refused.
   - [ ] API keys appear in no export, log, sync or mirror, by test.
+  - [ ] Key handling on the web passes a stored-script test, under the policy in [62](62-AI-ASSISTANT-AND-PROVIDERS.md) (`FND-67`).
+  - [ ] An approved write shows its audience and sources, and a private-to-shared copy gets the distinct warning (SEC-A08).
   - [ ] Owner sign-off.
 
 ## Phase 6 — First release
@@ -110,9 +119,9 @@
 - **Closes when:**
   - [ ] Signed installers on three platforms.
   - [ ] Model download resumes, checks hashes, and shows licence and size first.
-  - [ ] The local server refuses a request from another origin, by test.
+  - [ ] The local server refuses a request from another origin, by test. The model runs sandboxed where the platform allows, and injected script cannot change an endpoint, storage or model without a native confirmation (SEC-L06, SEC-W06).
   - [ ] Import from Markdown, HTML and Evernote, with a report.
-  - [ ] All six promises are green.
+  - [ ] Every promise that applies to a local-only release is green: PR-1 for one device, PR-3, PR-4, PR-5, PR-6. PR-2 and PR-1 across devices cannot apply until sync exists, and are Phase 7 exit criteria. The release notes say sync is not included.
   - [ ] Licence and name review done (`DEC-08`).
   - [ ] Owner sign-off.
 
@@ -124,6 +133,7 @@
   - [ ] The fault-injection suite loses no acknowledged edit, across a folder, WebDAV and S3.
   - [ ] A device offline past any limit gets a visible restored copy (PR-1).
   - [ ] Every fault appears in the state panel (PR-2).
+  - [ ] With sync on, the assistant honours the encrypted-notebook opt-in on every surface (SEC-A05).
   - [ ] An outside review of the cryptography, before any public claim.
   - [ ] Owner sign-off.
 

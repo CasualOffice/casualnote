@@ -240,7 +240,7 @@ Flat width, no pressure in the outline. Pressure is still stored if reported. Co
 | --- | --- |
 | Browser's built-in viewer in an `iframe` | Cannot sit under an ink layer in all browsers, and WKWebView differs. Rejected |
 | A Rust parser in the engine | Large attack surface in the engine. Rejected for viewing |
-| PDF.js in a worker | **Chosen.** Its parser runs inside the browser sandbox, in a worker with no DOM, under the page's CSP |
+| PDF.js in a worker | **Chosen.** Its parser runs inside the browser sandbox, in a worker with no DOM, under the page's CSP ([62](62-AI-ASSISTANT-AND-PROVIDERS.md)) |
 
 **Searching.** Text extracted by the same worker goes to search as derived data ([60](60-SEARCH-AND-EMBEDDINGS.md)). Selectable PDF text is later work. Scanned pages have no text, and OCR is `OCR-01`.
 

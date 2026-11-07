@@ -28,14 +28,15 @@ All under `webapp/editor/`, plain ES modules (ADR-025). The same code runs in th
 
 | Module | Owns | Must never |
 | --- | --- | --- |
-| `engine-client.js` | The async interface to the engine: `apply(batch)`, events `ack`, `durable`, `projection` | Hold document state |
-| `view-model.js` | A disposable cache of the projection: per block, `version`, `type`, attributes, runs | Be persisted, or be read by anything outside the editor |
+| `engine-client.js` | The async interface to the engine: `apply(batch)`, events `ack`, `refused`, `durable`, `projection` | Hold document state |
+| `view-model.js` | A disposable cache of the projection: per block, `version`, `type`, attributes, runs and the anchors of each run | Be persisted, or be read by anything outside the editor |
 | `input.js` | `beforeinput`, keydown and composition handling, intent to op batch | Touch the DOM directly |
 | `predict.js` | Pure function: view-model plus op gives next view-model, for the small op subset below | Decide validity |
 | `patch.js` | The only module that writes to the editing host | Use `innerHTML`, or touch a composing block |
 | `selection.js` | DOM selection to and from model positions | Set the selection during composition |
 | `virtual.js` | The virtualisation tiers | Unmount a block holding the anchor, focus or composition |
 | `clipboard.js` | Copy, cut, paste, drop | Insert parsed nodes into the live document |
+| `recovery.js` | Text from a refused batch, shown until the person deals with it | Drop text, or end a recovery without the person choosing to |
 | `blocks/*.js` | DOM shape per block type, including islands such as the database | Write to the model except through ops |
 
 ### The edit protocol
@@ -44,24 +45,41 @@ The engine does not run on the UI thread. On the web it lives in a dedicated wor
 
 ```
 beforeinput
-  → input.js builds an op batch with clientSeq n and the selection before and after
+  → input.js builds an op batch with clientSeq n and the selection before and after,
+    naming text and blocks by CRDT anchors, never by offset alone
   → predict.js updates the view-model          (only for the predictable subset)
   → patch.js updates the DOM, same task        ← the paint that QR-1 measures
   → engine-client posts the batch
-       engine: -ops validates, records inverse → -merge writes
+       engine: -ops resolves anchors, validates, records inverse → -merge writes
              → ack(n, revision, patches)
              → -store appends; group commit, fsync
              → durable(upToSeq n)              ← status shows "Saved on this device"
   → on ack: compare prediction with the projection. Equal: nothing to paint.
             Different: patch to the projection, count the mismatch
+  → on refused(n): rule 5 below. The text goes to recovery, never away
 ```
+
+**How an op names its target.** [24](24-OPERATIONS-AND-MERGE.md) owns the op fields, and this is the editor's side of that contract. Each patch gives every run its anchors in compact form, so the view-model can turn any position into a CRDT anchor without calling the engine. Text this device has typed but the engine has not acknowledged has no CRDT identity yet, so it gets a provisional anchor, `(clientSeq, index)`. The engine can resolve one because it applies a device's batches in `clientSeq` order. So an op says "after this character" and never only "at offset 12".
+
+| Situation | Result |
+| --- | --- |
+| A later op follows this device's own in-flight ops | Never stale. Its provisional anchors resolve when the earlier batches have applied |
+| A remote import arrived before the op | Not refused, so long as the anchors still resolve. A deleted character still marks its place in the CRDT |
+| A remote peer inserted text inside a range this op deletes or replaces | The remote text stays, because the op deletes characters by identity. Whether the library allows this is unverified ([24](24-OPERATIONS-AND-MERGE.md), `SPK-01`) |
+| A remote peer deleted the block | The op applies. The rule in [22](22-DATA-MODEL.md) for a block edited without seeing the delete (R-08) keeps it visible |
+| The target is truly gone: page or block purged, or the anchor is before a trim point | **Refused.** This is the only ordinary reason. See rule 5 |
+
+How much the anchors cost in the view-model and in each patch, on a 5,000-block page, is unmeasured, and `SPK-02` reports it.
 
 **Rules.**
 
 1. **Paint never waits for fsync, and "saved" always does.** [02](02-ARCHITECTURE.md) draws fsync before the DOM patch in its keystroke flow. Read literally, that cannot meet QR-1. PR-1 only requires that an edit is durable before it *shows as saved*, and the glossary's "acknowledged edit" says the same. This design follows PR-1. Between paint and `durable` the status line says "Saving". The core doc needs correcting, and a row is proposed.
 2. **Prediction is not a second truth.** The view-model can be dropped and reloaded from a projection at any moment. If engine and prediction disagree, the engine wins, always.
-3. **Prediction is not transformation.** Remote changes are never transformed against in-flight local ops. A block with unacknowledged ops or an active composition is "held": projections for it are stored, and the latest is applied when the block becomes clean. This keeps ADR-005's "no `transform`" true, since the only merge is in the CRDT.
+3. **Prediction is not transformation.** Remote changes are never transformed against in-flight local ops. A block with unacknowledged ops or an active composition is "held": projections for it are stored, and the latest is applied when the block becomes clean. Holding only delays what the person sees. It does not put an op at risk, because the op is addressed by anchors and the engine has already merged the remote change. This keeps ADR-005's "no `transform`" true, since the only merge is in the CRDT. Steady typing must not starve remote text, so a block held for over 2 s (proposal) with no composition takes the latest projection at the next `ack`, and `predict.js` re-applies its remaining in-flight batches by anchor. That is a replay on the engine's state, not a transform. A composing block never does this.
 4. **The predictable subset is closed:** `text.insert`, `text.delete`, `text.replace`, `mark.set`, `mark.clear`, `block.split`, `block.merge`. Everything else (type changes through repair, moves, database ops) waits for `ack`, with no visible state change until then. A property test runs `predict.js` and `-ops` on generated inputs and requires the same result.
+5. **A refusal never discards typing.** The engine answers `refused(n, reason)` only for a validation failure or a truly gone target. Later batches that depend on batch n's provisional anchors refuse with it, in order, and independent batches carry on. The block returns to the projection plus whatever is still in flight, and any text in a refused batch goes to the recovery path below (`CN-EDT-0001`).
+
+**Recovered text.** Text from a refused batch is written to a recovery record on this device, then shown where the person was typing: at that block's old place, at the top of the page if the place is gone, or in a workspace notice if the page is gone. The notice says the text could not be placed and why, and offers Insert here, Copy, Move to a new page and Discard (`edit.recovered_text`, [47](47-UX-AND-FEATURE-MAP.md)). A record is not part of the notes, is never synced or exported, and has the same local protection as its notebook. It stays across restarts until the person chooses. If the record cannot be written, the text stays on screen and the status line shows `CN-EDT-0005`.
 
 **Op names here are a working vocabulary.** The closed set belongs to [24](24-OPERATIONS-AND-MERGE.md), and the fields to [22](22-DATA-MODEL.md). If they differ, those documents win, and this table follows.
 
@@ -146,23 +164,42 @@ Shortcuts match on `event.key` when it is ASCII and fall back to `event.code` ot
 
 ### Composition
 
-**Rule: nothing touches a block during its composition.** No patching, no selection writes, no re-render, no focus change, no scroll adjustment, no remote projection and no virtual tier change. Interrupting a composition commits or destroys it, and that is the most common way web editors fail people typing Chinese, Japanese and Korean.
+**Rule: nothing touches a block during its composition.** No patching, no selection writes, no re-render, no focus change, no scroll adjustment, no remote projection and no virtual tier change. A composition over a selection holds every block the selection covers. Interrupting a composition commits or destroys it, and that is the most common way web editors fail people typing Chinese, Japanese and Korean.
 
 | Event | Editor does |
 | --- | --- |
-| `compositionstart` | Marks the block as composing and held. Takes a snapshot of the block's text and the selection in model positions. If the selection spans text or blocks, emits the delete batch first, on the same task |
+| `compositionstart` | If a commit is pending, flushes it first. Marks the block, and every block in the selection, as composing and held. Takes a snapshot of their text, the anchors of that text, and the selection in model positions. **Emits no op and paints nothing, whatever the selection** |
 | `beforeinput` of composition types, `compositionupdate`, `input` | Nothing but updating the status to "Saving", and the candidate position for any menu that wants it |
-| `compositionend` | Starts commit. Browsers order the last `input` differently, so commit runs in a task posted after `compositionend`, reading the DOM rather than the event |
-| Commit | Diff the block's text with the snapshot, using common prefix and suffix. Emit **one** `text.insert` or `text.replace`, as a single undo step. Clear held state, apply any stored projection, re-check triggers and Markdown shortcuts |
+| `compositionend` | **Snapshots the commit synchronously, in the handler:** reads the block's text from the DOM, keeps `event.data` beside it, and holds this as the pending commit. Posts a task. The block stays held |
+| Flush | Runs once, at the next `compositionstart` or in the posted task, whichever comes first. Diffs the pending commit with the start snapshot, using common prefix and suffix. Emits **one** `text.insert` or `text.replace` by the snapshot's anchors, as a single undo step. An empty diff emits nothing, which is how a cancelled composition ends |
+| Posted task | Flushes if nothing has yet. Then, only if no new composition has started: clears held state, applies any stored projection, re-checks triggers and Markdown shortcuts |
 
-**When the op is emitted:** at commit, and never before. Composing text is not an edit yet: the person has not chosen it.
+**When the op is emitted:** at flush, and never before. Composing text is not an edit yet: the person has not chosen it.
+
+**Why the commit is taken in the handler.** Browsers order the last `input` differently, so reading only in a posted task looks safe. But as far as this document knows, Korean input methods on some browsers fire `compositionend` and `compositionstart` together when one syllable ends and the next begins, with no task between them. A posted task would then run after the next composition has started writing, and would read the next syllable's first letter as committed text. That is from knowledge of browser behaviour, is not tested here, and `SPK-02` confirms it per browser and per input method (BR-17). The steps that handle both orders:
+
+- A flush at `compositionstart` compares the pending commit with the DOM as it stands. The new composition has not written yet, so if they differ, a late `input` arrived, and the DOM wins.
+- A flush in the posted task re-reads the DOM for the same reason.
+- Anything later still is caught by the `MutationObserver` as a `text.replace`, grouped into the same undo step.
+- The new composition's snapshot is taken after the flush. Its anchors into the text just committed are provisional, so the commit being in flight cannot make the next one stale.
+- The block never leaves the held state between two syllables, so no patch can land between them.
+
+**Composition over a selection or across several blocks.** A delete painted at `compositionstart` interrupts the input method, so there is none. The DOM and the engine reconcile at commit:
+
+1. **At start.** The snapshot records the selection's two ends as anchors, plus the text before the first end and after the last. In `blocks` and `all` mode the mode's range is recorded in the same way, and the composition runs at the collapsed native caret.
+2. **During.** The browser does what it does. It may remove the selected text at once, merge block elements or leave them, and this varies (BR-18). We do not correct it. The `MutationObserver` records and does not reconcile, and `virtual.js` unmounts nothing. The DOM may look wrong in small ways for the length of the composition, which is the accepted cost.
+3. **At commit.** The committed text is what the composing block's element holds, minus the recorded text before and after. If those do not match, because the browser changed more than expected, `event.data` from the pending commit is used. The batch is one undo step: the rule for a range that crosses blocks, under "beforeinput to op", by the snapshot's anchors, then one `text.insert` at the first end.
+4. **After commit.** `patch.js` repaints every held block from the projection, including structure, so anything the browser merged or removed is put right. Text a remote peer added inside the range survives and appears here.
+5. **If cancelled.** The empty diff means no op. The repaint restores the selected text, even if the browser had removed it. A cancelled composition deletes nothing.
+
+Which block the composition is in, and what the browser leaves when a selection covers an island, is what `SPK-02` records.
 
 **Consequences, stated plainly.**
 
-- A crash during composition loses the uncommitted composition. PR-1 covers acknowledged edits, and the status said "Saving" throughout.
-- Remote changes to that block appear only after commit. A long composition delays them, and never corrupts them.
+- A crash during composition loses the uncommitted composition. PR-1 covers acknowledged edits, and the status said "Saving" throughout. Selected text being typed over is still in the model until commit, so a crash leaves it in place.
+- Remote changes to that block appear only after commit. A long composition delays them, and never corrupts them. A remote import during a composition is merged by the engine at once, and it does not refuse the commit, since the commit's anchors come from the snapshot and still resolve. Korean typing can hold a block for as long as the person keeps typing.
 - On Android, some keyboards compose every word, and a few compose for a very long time. Android is Phase 9, and `MOB-01` must revisit this.
-- If the block is deleted remotely during composition, the composition is kept: on commit the text is inserted as a new block in the same place and the person sees it. Text the person typed is not dropped (PR-1).
+- If the block is deleted remotely during composition, the composition is kept: the commit applies at its anchors, and R-08 in [22](22-DATA-MODEL.md) keeps the block visible in its place, so the person sees it. If the target is truly gone, because it was purged, the commit is refused and the text goes to the recovery path. Text the person typed is not dropped (PR-1).
 - Switching tab or page during composition waits for `compositionend`, which the browser fires on blur.
 
 **Dead keys** (Spanish, French, German, Portuguese) go through the same path where the platform uses composition events, and through `insertText` where it does not.
@@ -194,7 +231,7 @@ The selection is sent to the engine with each batch and, debounced, on `selectio
 `patches` from the engine are per block, keyed by id: `{ id, version, type, attrs, runs }`, plus block order changes and removals.
 
 1. **Skip** if the version matches the view-model. This is the usual case after a predicted keystroke.
-2. **Hold** if the block is composing or has in-flight ops.
+2. **Hold** if the block is composing or has in-flight ops, subject to rule 3 of the edit protocol.
 3. **Structure:** if the type or an element-defining attribute changed, replace the block's element and restore the selection by model position.
 4. **Runs:** compare old and new runs by common prefix and suffix, and touch only the runs between. Where a text node's marks are unchanged, change its `data` with `replaceData` so that the node, and the caret in it, survive.
 5. **Order:** move elements by the longest run already in order, so that moving one block does not move the 4,999 others.
@@ -202,7 +239,7 @@ The selection is sent to the engine with each batch and, debounced, on `selectio
 
 Everything derived runs after this and off the typing path: outline, backlinks, counts and search.
 
-**Writes are text only.** `patch.js` uses `createElement`, `createTextNode`, `textContent`, `setAttribute` with an allow-list, and `replaceData`. `check-dom-text.py` refuses `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write` and `execCommand` in `webapp/`. There is no exception for icons: the prototype's `innerHTML` for icons becomes static SVG built with `createElementNS` (ADR-026). CSP is `default-src 'self'`, `script-src 'self' 'wasm-unsafe-eval'`, `object-src 'none'`, `base-uri 'none'`, with `require-trusted-types-for 'script'` where supported. Images load only from local blob URLs (SEC-W01, SEC-W03). [07](07-SECURITY-THREAT-MODEL.md) holds the threats.
+**Writes are text only.** `patch.js` uses `createElement`, `createTextNode`, `textContent`, `setAttribute` with an allow-list, and `replaceData`. `check-dom-text.py` refuses `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write` and `execCommand` in `webapp/`. There is no exception for icons: the prototype's `innerHTML` for icons becomes static SVG built with `createElementNS` (ADR-026). This rule is the main defence against script injection (SEC-W01), and the CSP only backs it up. The policy is stated once, in the CSP table in [62](62-AI-ASSISTANT-AND-PROVIDERS.md). Images load only from local blob URLs (SEC-W03). [07](07-SECURITY-THREAT-MODEL.md) holds the threats.
 
 ### Virtualising long pages
 
@@ -279,7 +316,7 @@ All unverified until `SPK-02`. Each has a test in the matrix.
 
 | ID | Risk | Response |
 | --- | --- | --- |
-| BR-1 | `compositionend` and the last `input` arrive in different orders across browsers | Commit reads the DOM in a posted task |
+| BR-1 | `compositionend` and the last `input` arrive in different orders across browsers | Commit snapshotted in the handler, then checked against the DOM at flush |
 | BR-2 | Safari's confirm-Enter has `isComposing` false and code 229 | Test both |
 | BR-3 | Input Events Level 1 and Level 2 differ: Safari's extra composition types; what is cancellable | Table above accepts both; reconciliation is the backstop |
 | BR-4 | `getTargetRanges()` is empty in some cases, such as at a block edge or in some Firefox versions | Fall back to `Selection.modify` on a clone, then `Intl.Segmenter` |
@@ -294,7 +331,9 @@ All unverified until `SPK-02`. Each has a test in the matrix.
 | BR-13 | Windows input methods differ from macOS ones. **The owner has no Windows machine, and `DEC-07` targets Phase 6** | `SPK-02` needs Windows much earlier. Row proposed |
 | BR-14 | Android keyboards send most typing as composition, with non-cancellable deletes | Reconciliation. Full treatment in `MOB-01` |
 | BR-15 | Grammar and password-manager extensions inject nodes into editable regions | `MutationObserver` reconciliation |
-| BR-16 | Webview engines differ from the browsers, and are updated by the OS | `SPK-02` adds WKWebView and WebView2 runs before ADR-007 is settled |
+| BR-16 | Webview engines differ from the browsers, and are updated by the OS | `SPK-02` runs them in Phase 0, before ADR-007 is settled: WKWebView locally, WebKitGTK and WebView2 through CI where possible |
+| BR-17 | Korean input methods may fire `compositionend` and `compositionstart` together between syllables | Flush at the next `compositionstart`. The block stays held. Known only from prior knowledge |
+| BR-18 | Browsers differ on what a composition does to a selection, especially across blocks and islands | Nothing painted during it. Commit by anchors, then repaint |
 
 ### Headless layout and render
 
@@ -316,7 +355,7 @@ model page or canvas
 
 **Determinism (QR-3).** The same model, the same version and the same font pack give the same bytes. `-render` uses a pinned font pack and never system fonts. The pack's hash is part of each golden. The PDF has no timestamps unless passed in by the host. Hash map order is not allowed in output.
 
-**Fonts.** Faces are supplied through a host seam rather than compiled in, as OpenCalc's docs/64 and docs/101 decided. CJK slices are fetched by need: the writer reports which it wants, the host supplies them, and the export report names any character it could not draw, per script, with a sample. Nothing is drawn as an unexplained box. Rules in [50](50-INTERNATIONALIZATION.md).
+**Fonts.** Faces are supplied through a host seam rather than compiled in, as OpenCalc's docs/64 and docs/101 decided. The writer reports which CJK slices it wants, and the host supplies them from what it already holds. Note content never causes a font request. The export report names any character it could not draw, per script, with a sample. Nothing is drawn as an unexplained box. Rules in [50](50-INTERNATIONALIZATION.md).
 
 **PDF.** Real text, with embedded subset fonts and `ToUnicode`, so that text extracts in every launch script, Arabic and Devanagari included. Document language and heading tags are written, because QR-5 should extend to exports. Vector ink. Canvas pages size to their content. PDF backgrounds are in [43](43-CANVAS-AND-INK.md). OpenCalc's PDF writer and subsetter are the obvious source, copied with `PROVENANCE.md`, once confirmed free of spreadsheet types. [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) lists only `-package`, `-text` and `-secrets` as copied today.
 
@@ -332,7 +371,7 @@ Codes for [20](20-ERROR-CODE-REGISTRY.md), limits for [21](21-PARSER-LIMITS.md).
 
 | Code | Meaning | Person sees |
 | --- | --- | --- |
-| `CN-EDT-0001` | Engine refused an op batch. The DOM returns to the projection | The block returns to its last state, with a message |
+| `CN-EDT-0001` | Engine refused an op batch: validation failed, or the target is truly gone. The DOM returns to the projection plus what is still in flight | The block shows the engine's state. Typed text from the batch appears in a visible recovery notice, and is never discarded |
 | `CN-EDT-0002` | Unknown `inputType` cancelled | Nothing. Development log only |
 | `CN-EDT-0003` | Prediction differed from the projection | Nothing, with a counter for tests. A failure in CI |
 | `CN-EDT-0004` | Paste or drop exceeded a limit, or a fragment failed its schema | "Could not paste all of this", and what was kept |
@@ -350,7 +389,9 @@ Codes for [20](20-ERROR-CODE-REGISTRY.md), limits for [21](21-PARSER-LIMITS.md).
 | Internal fragment bytes | 16 MiB |
 | Text in one block, when pasting | 1 MiB of UTF-8. Longer pasted text splits on newlines first. The model's hard limit is 4 MiB ([22](22-DATA-MODEL.md)) |
 
-**Known limits.** A crash can lose uncommitted composition and edits not yet durable, which were never shown as saved. Long pages at tier 3 would weaken browser find and screen reader browsing. Line breaks differ between screen and export.
+| Held block with no composition, before replay on the latest projection | 2 s |
+
+**Known limits.** A crash can lose uncommitted composition and edits not yet durable, which were never shown as saved. Long pages at tier 3 would weaken browser find and screen reader browsing. Line breaks differ between screen and export. During a composition over a selection, the DOM may not match the model until commit.
 
 ## Alternatives considered
 
@@ -387,6 +428,8 @@ Keystrokes are scripted at realistic speed, and with a person typing. Keystrokes
 
 **Machines.** Named at the start of the spike, per [30](30-PERFORMANCE-TARGETS.md): a mid-range laptop and an old one. "Mid-range" has no definition until then, and the named model and price band go in the report.
 
+**Desktop webviews and IPC, in Phase 0.** The same harness also runs in a bare Tauri shell, with the engine behind `invoke` (`FND-24`, [44](44-DESKTOP-SHELL.md)), on the machines available: macOS WKWebView locally, and WebKitGTK and WebView2 through CI where possible. A CI runner has no person at it and no real input method, so those runs give work time, `invoke` latency and scripted input only. A cell that could not run is recorded as not run, never as passed. Real input methods on Windows and Linux wait for a machine (`DEC-07`).
+
 **Matrix.**
 
 | | Chrome | Safari | Firefox |
@@ -403,10 +446,19 @@ Keystrokes are scripted at realistic speed, and with a person typing. Keystrokes
 | Selection: drag, Shift+arrows, across islands, Mod+A, on a long page | Required | Required | Required |
 | Find in page | Required | Required | Required |
 | Paste: real and hostile fixtures | Required | Required | Required |
+| Korean: `compositionend` and `compositionstart` order, recorded per input method | Required | Required | Required |
+| Composition over a selection, in one block and across blocks, including an island, and cancelled | Required | Required | Required |
+| Remote import during composition, and a target truly gone at commit | Required | Required | Required |
+
+| Desktop webview | How | Runs |
+| --- | --- | --- |
+| WKWebView | Locally, on macOS | Performance, IPC, input methods, right-to-left, composition rows above, VoiceOver |
+| WebKitGTK | CI where possible | Performance on the runner, IPC, scripted input. The rest is not run until a machine exists |
+| WebView2 | CI where possible | Performance on the runner, IPC, scripted input. The rest is not run until a machine exists |
 
 Windows runs need a machine or a remote one (BR-13, `DEC-07`). Automated composition uses Chrome's DevTools protocol (`Input.imeSetComposition`), which Firefox and WebKit do not offer in the same way, so real input methods are also tested by hand against a written script, and each result is recorded per browser and per method.
 
-**Pass.** On a 5,000-block page, work time is within 16 ms for 95% of keystrokes on a mid-range laptop, and input methods, right-to-left and a screen reader all work in Chrome, Safari and Firefox.
+**Pass.** On a 5,000-block page, work time is within 16 ms for 95% of keystrokes on a mid-range laptop, and input methods, right-to-left and a screen reader all work in Chrome, Safari and Firefox. WKWebView meets the same bar through IPC. The CI webviews are reported with what ran, and a bad result there is raised to the owner before ADR-007 is settled.
 
 **Fail: virtualise harder.** Move in order, and re-run after each step:
 
@@ -426,6 +478,11 @@ Windows runs need a machine or a remote one (BR-13, `DEC-07`). Automated composi
 | Every row of the `inputType` table has a test in each browser | Mapping | `WEB-03` |
 | Composition test: nothing writes to the host during composition, shown by a `MutationObserver` assertion, in Chinese, Japanese and Korean | No interruption | `I18N-03` |
 | Remote edit arriving during composition neither breaks the composition nor loses the edit | Hold rule | `WEB-03` |
+| Own in-flight ops, and a remote import before an op, never refuse it while its anchors resolve, on generated histories | Anchored ops | `WEB-03` |
+| A refused batch, and batches depending on it, leave every typed character in a visible recovery notice, across a restart | PR-1, `CN-EDT-0001` | `WEB-03` |
+| Composition over a selection and across blocks: no write to the host before commit, one undo step after, a cancel deletes nothing, and remote text inside the range survives | Selection rule | `I18N-03` |
+| Korean: end and start fired together, in a scripted fixture and with real input methods. Each syllable commits once and whole | Flush rule | `I18N-03` |
+| Desktop webview cells of `SPK-02` recorded as run or not run | BR-16 | `SPK-02` |
 | `predict.js` agrees with `-ops` on generated inputs | Prediction | `WEB-03` |
 | Crash injection between paint and `durable`: status never said saved for lost text | PR-1 | `STO-01`, `WEB-03` |
 | Hostile clipboard fixtures: no script, no request, no raw node inserted | QR-7, SEC-W04 | `WEB-04` |
@@ -440,4 +497,4 @@ ADR-005 (no `transform`), ADR-007 and ADR-025 (settled by `SPK-02`), ADR-013 (as
 
 ## Tracker ids
 
-`SPK-02`, `WEB-01`, `WEB-03`, `WEB-04`, `WEB-05`, `OPS-02`, `I18N-02`, `I18N-03`, `A11Y-01`, `RND-01`, `FIL-01`, `MOB-01`, `STO-01`, `GOV-03`, and `RISK-02` in [06](06-ROADMAP-AND-DELIVERY.md).
+`SPK-02`, `WEB-01`, `WEB-03`, `WEB-04`, `WEB-05`, `OPS-02`, `I18N-02`, `I18N-03`, `A11Y-01`, `RND-01`, `FIL-01`, `MOB-01`, `STO-01`, `GOV-03`, `FND-24`, `DEC-07`, and `RISK-02` in [06](06-ROADMAP-AND-DELIVERY.md).

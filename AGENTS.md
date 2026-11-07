@@ -37,4 +37,4 @@ A production-grade, multilingual, local-first block workspace with a determinist
 
 ## Current state
 
-**Phase D is open.** Design documents are written, with a fresh review under way (`DOC-008`) and owner sign-off outstanding. No product code exists. See [docs/06](docs/06-ROADMAP-AND-DELIVERY.md). Keep this section agreeing with the README's Status.
+**Building, on the owner's instruction 11.** The engine and web editor run. Design review `DOC-009` and the Phase D and Phase 0 gates were waived to start. See [docs/06](docs/06-ROADMAP-AND-DELIVERY.md). Keep this section agreeing with the README's Status.

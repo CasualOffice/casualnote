@@ -55,7 +55,7 @@ pub struct Edge { pub from: NodeId, pub to: NodeId, pub kind: EdgeKind, pub orig
 | Graph view | Computed edges are dashed and thin, and never depend on colour alone (QR-5). The legend always explains them. One filter turns them all off |
 | Details panel | Listed in a separate group: "Similar, computed", with the score, never mixed with links |
 | Backlinks (FR-03) | Never include computed edges |
-| Tool results | Each connection carries `"origin": "made"` or `"computed"`, and a score for computed ([63](63-AGENT-TOOLS-AND-MCP.md)) |
+| Tool results | Each connection carries `"origin": "made"` or `"computed"`, and a score for computed ([63](63-AGENT-TOOLS-AND-MCP.md)). On an end-to-end encrypted notebook with no opt-in, `graph_neighbors`, `related_pages` and the assistant's graph context refuse or stay empty (`CN-TOL-0016`), since titles and tags are note content. The graph view in the app is unaffected |
 | Screen readers | The text alternative says "similar, computed" in words |
 | Promotion | A person can choose "Add link", which runs an ordinary op and creates a real `link`. A computed edge is never written into the notes on its own |
 | Pair rule | No `similar` edge is drawn when a made edge already joins the pair, as in the prototype |

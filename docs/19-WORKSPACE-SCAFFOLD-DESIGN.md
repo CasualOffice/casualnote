@@ -23,7 +23,7 @@ Prefix: `casual-note-`.
 | `-search` | Tokenising per script, inverted index. See [60](60-SEARCH-AND-EMBEDDINGS.md) | `-model` | Vectors | 4 |
 | `-embed` | Chunking, vector store, nearest-neighbour search. The model is a host seam. See [60](60-SEARCH-AND-EMBEDDINGS.md) | `-model` | Model inference, network | 4 |
 | `-graph` | Derives the knowledge graph. See [61](61-KNOWLEDGE-GRAPH.md) | `-model`, `-embed` | Any stored graph | 4 |
-| `-sync` | Device registry, segment exchange, sync state, trimming. See [56](56-SYNC-DESIGN.md) | `-store`, `-crypto`, `-merge` | Transport | 7 |
+| `-sync` | Device registry, segment exchange, sync state, trimming, restored copies. See [56](56-SYNC-DESIGN.md) | `-store`, `-crypto`, `-merge`, `-ops` | Transport | 7 |
 | `-sdk` | The stable Rust facade | All above | Logic of its own | 1 |
 | `-wasm` | The `wasm-bindgen` bridge | Same set as `-sdk` | Logic of its own | 2 |
 | `-tools` | The agent tool set, with schemas. See [63](63-AGENT-TOOLS-AND-MCP.md) | `-sdk` | Transport, AI provider | 5 |

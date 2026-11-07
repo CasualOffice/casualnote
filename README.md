@@ -2,7 +2,7 @@
 
 **A multilingual, local-first workspace for documents, databases, canvases and pen notes, with a knowledge graph and an optional AI assistant you control. Apache-2.0 all the way through.**
 
-> **Design stage. There is no product code yet.** What exists: a complete design, a clickable prototype, a documented export format, and a standalone reader for it. See [Status](#status).
+> **Early, and it runs.** A Rust engine and a web editor work today. Databases, canvas, the knowledge graph, the assistant, sync and the desktop app are not built yet. See [Status](#status).
 
 ## Why
 
@@ -20,13 +20,26 @@
 | Clickable prototype | Works in a browser. No engine. Sync, provider connection and model download are previews |
 | Export format, version 1 | Draft spec and schema |
 | Standalone package reader | Works, with tests |
-| Engine, web app, desktop app, sync, server | Not started |
+| Engine: pages, blocks, undo, merging | **Works, with tests** |
+| Web editor: blocks, slash menu, marks, search, six interface languages, saves in the browser | **Works, tested in Chrome** |
+| Databases, canvas, links, knowledge graph, assistant, MCP, package export from the engine | Next |
+| Desktop app, sync, server | Not started |
 
 Nothing has been measured. Performance figures in the docs are targets.
 
-## Try what exists
+## Run it
 
 ```sh
+tools/run-web.sh
+```
+
+Then open <http://127.0.0.1:8741/>. Needs Rust and wasm-pack.
+
+## Check it
+
+```sh
+cargo test --workspace
+node tools/e2e.mjs
 python3 tools/cnotepack.py verify fixtures/sample-workspace.cnotepack
 python3 tools/cnotepack.py extract fixtures/sample-workspace.cnotepack ./out
 python3 tools/test_cnotepack.py

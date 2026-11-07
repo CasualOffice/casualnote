@@ -153,7 +153,7 @@ Evaluation is document-at-a-time with a top-k heap and the skip tables. Block-ma
 
 ### Part 2: search by meaning
 
-Models are optional downloads (ADR-015, ADR-027). This feature is off until the person installs one. Nothing downloads without a click ([62](62-AI-ASSISTANT-AND-PROVIDERS.md) download flow). It is on-device in both modes, including the web, and needs no AI provider. The model runs on the device and no text leaves it, so turning the assistant off does not require turning this off.
+Models are optional downloads (ADR-015, ADR-027). This feature is off until the person installs one. Nothing downloads without a click ([62](62-AI-ASSISTANT-AND-PROVIDERS.md) download flow). It is on-device in both modes, including the web, and needs no AI provider. The model runs on the device and no text leaves it, so turning the assistant off does not require turning this off. The whole model file is hashed before it is installed and before each load, whatever a resumed download did. A download on the web changes `connect-src` for that one page load, as the CSP table in [62](62-AI-ASSISTANT-AND-PROVIDERS.md) states.
 
 #### Chunking
 
@@ -192,7 +192,7 @@ impl VectorIndex {
 
 The host's embedder takes text and a kind, `Query` or `Passage`, because some models want a different prefix for each. That prefix is the host adapter's job and is unverified until `SPK-06` reads each model card.
 
-**Where the runtime lives.** A compiled inference runtime belongs in no crate under `crates/`. The web needs a separately built wasm module loaded only after the model is installed, in its own worker, and desktop needs the same runtime in the shell. [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) gives this no home (proposed row `FND-60`). Proposal: `webapp/embedder/` and `desktop/`, built from one shared source outside `crates/`.
+**Where the runtime lives.** A compiled inference runtime belongs in no crate under `crates/`. The web needs a separately built wasm module loaded only after the model is installed, in its own worker, and desktop needs the same runtime in the shell. [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) gives this no home (proposed row `FND-60`). Proposal: `webapp/embedder/` and `desktop/`, built from one shared source outside `crates/`. A runtime parsing a model file on desktop follows the same rule as the local model: a separate process under an operating system sandbox where one exists, unverified until `SPK-07`, with the interface saying so where none applies ([44](44-DESKTOP-SHELL.md)).
 
 **Throttling.** The host only calls `next_batch` when no typing has happened recently, and on desktop can pause on battery. Embedding has lower priority than the search index. Proposed idle pause: 30 seconds per changed block, with an initial build running continuously at low priority and pausing during typing (PERF-09).
 
@@ -225,7 +225,7 @@ derived/vectors/<hash of model tag>/
 - **Search panel:** exact matches first, then a separate group labelled as matches by meaning. They are not blended into one ranked list. A person should always be able to tell whether their words are in the note.
 - **Related pages:** cosine of page vectors above a threshold. The threshold belongs to the model and is in the catalogue. The prototype's `.06`, `.08` and `.12` are for its stand-in only.
 - **Graph:** similarity edges come from `related_pages` ([61](61-KNOWLEDGE-GRAPH.md)).
-- **Assistant and tools:** `search_notes` and `related_pages` ([63](63-AGENT-TOOLS-AND-MCP.md)).
+- **Assistant and tools:** `search_notes` and `related_pages` ([63](63-AGENT-TOOLS-AND-MCP.md)). Both refuse on an end-to-end encrypted notebook with no opt-in (`CN-TOL-0016`), though the same search works for the person in the app.
 
 #### Embedding candidates
 
