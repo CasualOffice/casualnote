@@ -1,5 +1,5 @@
 // Drives the real app in a real browser, through real input events. Open with ?e2e=1.
-export async function runE2E({ engine, store, state, undoStack, replay, redoStack, pageNow, openPage, setLang, renderAll, $, $$, setCaret, textOf }) {
+export async function runE2E({ api, engine, store, state, undoStack, replay, redoStack, pageNow, openPage, setLang, renderAll, $, $$, setCaret, textOf }) {
   const out = [];
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const ok = async (name, f) => { try { out.push(((await f()) === false ? "FAIL " : "ok ") + name); } catch (e) { out.push("THROW " + name + ": " + (e.message || e)); } };
@@ -58,5 +58,10 @@ export async function runE2E({ engine, store, state, undoStack, replay, redoStac
     renderAll();
     return engine.page(state.cur) === other.page(state.cur) && texts()[0].startsWith("FROM OTHER ") && texts()[0].endsWith(" local");
   });
+  for (const name of ["links", "database", "canvas", "knowledge", "package", "assistant"]) {
+    let mod = null;
+    try { mod = await import(`./${name}.test.js`); } catch { continue; }
+    await mod.run({ api, ok, wait, key, type, texts, first, pageNow, engine, state, store, setCaret, textOf, openPage, $, $$ });
+  }
   document.body.setAttribute("data-e2e", out.join("\n"));
 }

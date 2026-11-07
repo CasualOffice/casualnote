@@ -17,6 +17,13 @@ dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 
+# Disk is tight on this machine, and full debug info is most of a build's size.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

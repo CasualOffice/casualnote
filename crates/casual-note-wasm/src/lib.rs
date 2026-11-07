@@ -41,6 +41,16 @@ impl Engine {
         serde_json::to_string(&self.ws.page(id).map_err(fail)?).map_err(fail)
     }
 
+    /// Every database id, as JSON.
+    pub fn databases(&self) -> Result<String, JsError> {
+        serde_json::to_string(&self.ws.database_ids()).map_err(fail)
+    }
+
+    /// One database, as JSON.
+    pub fn database(&self, id: &str) -> Result<String, JsError> {
+        serde_json::to_string(&self.ws.database(id).map_err(fail)?).map_err(fail)
+    }
+
     /// Everything, for storage or another replica.
     pub fn export(&self) -> Result<Vec<u8>, JsError> {
         self.ws.export().map_err(fail)

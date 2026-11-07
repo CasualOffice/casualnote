@@ -2,7 +2,9 @@
 //! undo is replaying inverses. Merging is the CRDT's job, and there is no transform (ADR-005).
 
 use casual_note_merge::Workspace;
-use casual_note_model::{Block, BlockKind, Error, Mark, Run};
+use casual_note_model::{
+    Block, BlockKind, CanvasItem, Column, Database, Error, Ink, Mark, Note, Row, Run,
+};
 use serde::{Deserialize, Serialize};
 
 /// One edit.
@@ -13,6 +15,8 @@ pub enum Op {
         id: String,
         parent: Option<String>,
         title: String,
+        #[serde(default)]
+        database: Option<String>,
     },
     SetTitle {
         id: String,
@@ -59,6 +63,74 @@ pub enum Op {
         mark: Mark,
         on: bool,
     },
+    SetLink {
+        page: String,
+        block: String,
+        start: usize,
+        end: usize,
+        target: Option<String>,
+    },
+    SetView {
+        page: String,
+        view: String,
+    },
+    SetNote {
+        page: String,
+        note: Note,
+    },
+    PutItem {
+        page: String,
+        item: CanvasItem,
+    },
+    DeleteItem {
+        page: String,
+        id: String,
+    },
+    ChangeInk {
+        page: String,
+        #[serde(default)]
+        add: Vec<Ink>,
+        #[serde(default)]
+        remove: Vec<String>,
+    },
+    CreateDatabase {
+        database: Database,
+    },
+    SetDatabaseField {
+        id: String,
+        key: String,
+        value: String,
+    },
+    AddColumn {
+        id: String,
+        column: Column,
+    },
+    SetColumnHidden {
+        id: String,
+        column: String,
+        hidden: bool,
+    },
+    AddRow {
+        id: String,
+        after: Option<String>,
+        row: Row,
+    },
+    DeleteRow {
+        id: String,
+        row: String,
+    },
+    SetRowField {
+        id: String,
+        row: String,
+        key: String,
+        value: String,
+    },
+    SetCell {
+        id: String,
+        row: String,
+        column: String,
+        value: String,
+    },
     SetBlock {
         page: String,
         block: String,
@@ -70,8 +142,13 @@ pub enum Op {
 /// Applies an op, and returns the op that undoes it.
 pub fn apply(ws: &mut Workspace, op: &Op) -> Result<Op, Error> {
     Ok(match op {
-        Op::CreatePage { id, parent, title } => {
-            ws.create_page(id, parent.as_deref(), title)?;
+        Op::CreatePage {
+            id,
+            parent,
+            title,
+            database,
+        } => {
+            ws.create_page(id, parent.as_deref(), title, database.as_deref())?;
             Op::SetTrashed {
                 id: id.clone(),
                 value: true,
@@ -150,6 +227,125 @@ pub fn apply(ws: &mut Workspace, op: &Op) -> Result<Op, Error> {
                 on: !*on,
             }
         }
+        Op::SetLink {
+            page,
+            block,
+            start,
+            end,
+            target,
+        } => {
+            ws.set_link(page, block, *start, *end, target.as_deref())?;
+            Op::SetLink {
+                page: page.clone(),
+                block: block.clone(),
+                start: *start,
+                end: *end,
+                target: None,
+            }
+        }
+        Op::SetView { page, view } => Op::SetView {
+            page: page.clone(),
+            view: ws.set_view(page, view)?,
+        },
+        Op::SetNote { page, note } => Op::SetNote {
+            page: page.clone(),
+            note: ws.set_note(page, note)?,
+        },
+        Op::PutItem { page, item } => match ws.put_item(page, item)? {
+            Some(old) => Op::PutItem {
+                page: page.clone(),
+                item: old,
+            },
+            None => Op::DeleteItem {
+                page: page.clone(),
+                id: item.id.clone(),
+            },
+        },
+        Op::DeleteItem { page, id } => Op::PutItem {
+            page: page.clone(),
+            item: ws.delete_item(page, id)?,
+        },
+        Op::ChangeInk { page, add, remove } => {
+            let removed = ws.change_ink(page, add, remove)?;
+            Op::ChangeInk {
+                page: page.clone(),
+                add: removed,
+                remove: add.iter().map(|s| s.id.clone()).collect(),
+            }
+        }
+        Op::CreateDatabase { database } => {
+            ws.create_database(database)?;
+            Op::SetDatabaseField {
+                id: database.id.clone(),
+                key: "name".into(),
+                value: database.name.clone(),
+            }
+        }
+        Op::SetDatabaseField { id, key, value } => {
+            if key != "name" && key != "view" {
+                return Err(Error::BadRange(key.clone()));
+            }
+            Op::SetDatabaseField {
+                id: id.clone(),
+                key: key.clone(),
+                value: ws.set_database_field(id, key, value)?,
+            }
+        }
+        Op::AddColumn { id, column } => {
+            ws.add_column(id, column)?;
+            Op::SetColumnHidden {
+                id: id.clone(),
+                column: column.id.clone(),
+                hidden: true,
+            }
+        }
+        Op::SetColumnHidden { id, column, hidden } => Op::SetColumnHidden {
+            id: id.clone(),
+            column: column.clone(),
+            hidden: ws.set_column_hidden(id, column, *hidden)?,
+        },
+        Op::AddRow { id, after, row } => {
+            ws.add_row(id, after.as_deref(), row)?;
+            Op::DeleteRow {
+                id: id.clone(),
+                row: row.id.clone(),
+            }
+        }
+        Op::DeleteRow { id, row } => {
+            let (old, after) = ws.delete_row(id, row)?;
+            Op::AddRow {
+                id: id.clone(),
+                after,
+                row: old,
+            }
+        }
+        Op::SetRowField {
+            id,
+            row,
+            key,
+            value,
+        } => {
+            if key != "name" && key != "status" {
+                return Err(Error::BadRange(key.clone()));
+            }
+            Op::SetRowField {
+                id: id.clone(),
+                row: row.clone(),
+                key: key.clone(),
+                value: ws.set_row_field(id, row, key, value)?,
+            }
+        }
+        Op::SetCell {
+            id,
+            row,
+            column,
+            value,
+        } => Op::SetCell {
+            id: id.clone(),
+            row: row.clone(),
+            column: column.clone(),
+            value: ws.set_cell(id, row, column, value)?,
+        },
         Op::SetBlock {
             page,
             block,
@@ -179,8 +375,10 @@ pub fn paragraph(id: &str, text: &str) -> Block {
             vec![Run {
                 text: text.into(),
                 marks: vec![],
+                link: None,
             }]
         },
+        target: None,
     }
 }
 
@@ -196,6 +394,7 @@ mod tests {
                 id: "p".into(),
                 parent: None,
                 title: "Notes".into(),
+                database: None,
             },
         )
         .unwrap();
@@ -489,6 +688,7 @@ mod tests {
                 id: "q".into(),
                 parent: Some("p".into()),
                 title: "Child".into(),
+                database: None,
             },
         )
         .unwrap();
@@ -523,6 +723,313 @@ mod tests {
             let _ = ws.import(&bad);
             let _ = ws.pages();
         }
+    }
+
+    fn empty_db(id: &str) -> Database {
+        Database {
+            id: id.into(),
+            name: "Tasks".into(),
+            view: "table".into(),
+            statuses: vec![casual_note_model::Status {
+                id: "s1".into(),
+                name: "To do".into(),
+                group: "todo".into(),
+            }],
+            columns: vec![Column {
+                id: "owner".into(),
+                name: "Owner".into(),
+                kind: "text".into(),
+                hidden: false,
+            }],
+            rows: vec![],
+        }
+    }
+    fn row(id: &str) -> Row {
+        Row {
+            id: id.into(),
+            name: id.into(),
+            status: "s1".into(),
+            values: Default::default(),
+        }
+    }
+
+    #[test]
+    fn database_edits_undo_and_cells_from_two_devices_both_survive() {
+        let mut a = seeded(1);
+        apply(
+            &mut a,
+            &Op::CreateDatabase {
+                database: empty_db("d"),
+            },
+        )
+        .unwrap();
+        apply(
+            &mut a,
+            &Op::AddRow {
+                id: "d".into(),
+                after: None,
+                row: row("r1"),
+            },
+        )
+        .unwrap();
+        apply(
+            &mut a,
+            &Op::AddColumn {
+                id: "d".into(),
+                column: Column {
+                    id: "due".into(),
+                    name: "Due".into(),
+                    kind: "date".into(),
+                    hidden: false,
+                },
+            },
+        )
+        .unwrap();
+        let mut b = Workspace::new(2).unwrap();
+        b.import(&a.export().unwrap()).unwrap();
+        assert_eq!(a.database("d").unwrap(), b.database("d").unwrap());
+
+        apply(
+            &mut a,
+            &Op::SetCell {
+                id: "d".into(),
+                row: "r1".into(),
+                column: "owner".into(),
+                value: "Mei".into(),
+            },
+        )
+        .unwrap();
+        apply(
+            &mut b,
+            &Op::SetCell {
+                id: "d".into(),
+                row: "r1".into(),
+                column: "due".into(),
+                value: "2026-12-01".into(),
+            },
+        )
+        .unwrap();
+        apply(
+            &mut b,
+            &Op::AddRow {
+                id: "d".into(),
+                after: Some("r1".into()),
+                row: row("r2"),
+            },
+        )
+        .unwrap();
+        sync(&mut a, &mut b);
+        let db = a.database("d").unwrap();
+        assert_eq!(db, b.database("d").unwrap());
+        assert_eq!(db.rows[0].values["owner"], "Mei");
+        assert_eq!(db.rows[0].values["due"], "2026-12-01");
+        assert_eq!(db.rows.len(), 2);
+
+        let inverse = apply(
+            &mut a,
+            &Op::DeleteRow {
+                id: "d".into(),
+                row: "r1".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(a.database("d").unwrap().rows.len(), 1);
+        apply(&mut a, &inverse).unwrap();
+        let back = a.database("d").unwrap();
+        assert_eq!(back.rows[0].id, "r1");
+        assert_eq!(back.rows[0].values["owner"], "Mei");
+    }
+
+    #[test]
+    fn a_hidden_column_keeps_its_cells() {
+        let mut a = seeded(1);
+        apply(
+            &mut a,
+            &Op::CreateDatabase {
+                database: empty_db("d"),
+            },
+        )
+        .unwrap();
+        apply(
+            &mut a,
+            &Op::AddRow {
+                id: "d".into(),
+                after: None,
+                row: row("r1"),
+            },
+        )
+        .unwrap();
+        apply(
+            &mut a,
+            &Op::SetCell {
+                id: "d".into(),
+                row: "r1".into(),
+                column: "owner".into(),
+                value: "Mei".into(),
+            },
+        )
+        .unwrap();
+        apply(
+            &mut a,
+            &Op::SetColumnHidden {
+                id: "d".into(),
+                column: "owner".into(),
+                hidden: true,
+            },
+        )
+        .unwrap();
+        let db = a.database("d").unwrap();
+        assert!(db.columns[0].hidden);
+        assert_eq!(db.rows[0].values["owner"], "Mei");
+    }
+
+    #[test]
+    fn canvas_items_and_ink_undo_merge_and_keep_order() {
+        let mut a = seeded(1);
+        let item = CanvasItem {
+            id: "i".into(),
+            kind: "sticky".into(),
+            x: 1.5,
+            y: 2.0,
+            width: 170.0,
+            height: 120.0,
+            color: "amber".into(),
+            text: "你好".into(),
+        };
+        let inverse = apply(
+            &mut a,
+            &Op::PutItem {
+                page: "p".into(),
+                item: item.clone(),
+            },
+        )
+        .unwrap();
+        assert_eq!(a.page("p").unwrap().canvas.items, vec![item.clone()]);
+        apply(&mut a, &inverse).unwrap();
+        assert!(a.page("p").unwrap().canvas.items.is_empty());
+        apply(
+            &mut a,
+            &Op::PutItem {
+                page: "p".into(),
+                item,
+            },
+        )
+        .unwrap();
+
+        let stroke = |id: &str, x: f64| Ink {
+            id: id.into(),
+            kind: "pen".into(),
+            color: "red".into(),
+            width: 3.0,
+            points: vec![[x, 1.0, 0.5], [x + 1.25, 2.5, 0.75]],
+        };
+        apply(
+            &mut a,
+            &Op::ChangeInk {
+                page: "p".into(),
+                add: vec![stroke("s1", 10.0)],
+                remove: vec![],
+            },
+        )
+        .unwrap();
+        let mut b = Workspace::new(2).unwrap();
+        b.import(&a.export().unwrap()).unwrap();
+        apply(
+            &mut a,
+            &Op::ChangeInk {
+                page: "p".into(),
+                add: vec![stroke("s2", 20.0), stroke("s3", 30.0)],
+                remove: vec!["s1".into()],
+            },
+        )
+        .unwrap();
+        apply(
+            &mut b,
+            &Op::ChangeInk {
+                page: "p".into(),
+                add: vec![stroke("s4", 40.0)],
+                remove: vec![],
+            },
+        )
+        .unwrap();
+        sync(&mut a, &mut b);
+        assert_eq!(a.page("p").unwrap().canvas, b.page("p").unwrap().canvas);
+        let ids: Vec<_> = a
+            .page("p")
+            .unwrap()
+            .canvas
+            .ink
+            .iter()
+            .map(|s| s.id.clone())
+            .collect();
+        assert_eq!(ids.len(), 3);
+        assert!(ids.contains(&"s4".to_string()));
+        assert!(!ids.contains(&"s1".to_string()));
+        assert_eq!(
+            a.page("p")
+                .unwrap()
+                .canvas
+                .ink
+                .iter()
+                .find(|s| s.id == "s2")
+                .unwrap()
+                .points[1],
+            [21.25, 2.5, 0.75]
+        );
+    }
+
+    #[test]
+    fn damaged_or_huge_ink_is_refused() {
+        assert!(casual_note_model::decode_samples(&[0xFF; 20]).is_err());
+        assert!(casual_note_model::encode_samples(&[[f64::NAN, 0.0, 0.0]]).is_err());
+        assert!(casual_note_model::encode_samples(&[[2e9, 0.0, 0.0]]).is_err());
+        let round = [[1.5, -2.25, 0.5], [100.0, 200.0, 1.0]];
+        assert_eq!(
+            casual_note_model::decode_samples(&casual_note_model::encode_samples(&round).unwrap())
+                .unwrap(),
+            round
+        );
+    }
+
+    #[test]
+    fn links_read_back_and_embeds_keep_their_target() {
+        let mut a = seeded(1);
+        apply(
+            &mut a,
+            &Op::CreatePage {
+                id: "q".into(),
+                parent: None,
+                title: "Other".into(),
+                database: None,
+            },
+        )
+        .unwrap();
+        apply(
+            &mut a,
+            &Op::SetLink {
+                page: "p".into(),
+                block: "a".into(),
+                start: 0,
+                end: 5,
+                target: Some("q".into()),
+            },
+        )
+        .unwrap();
+        let mut embed = paragraph("e", "");
+        embed.kind = BlockKind::Embed;
+        embed.target = Some("q".into());
+        apply(
+            &mut a,
+            &Op::InsertBlock {
+                page: "p".into(),
+                after: Some("a".into()),
+                block: embed,
+            },
+        )
+        .unwrap();
+        let page = a.page("p").unwrap();
+        assert_eq!(page.blocks[0].runs[0].link.as_deref(), Some("q"));
+        assert_eq!(page.blocks[1].target.as_deref(), Some("q"));
     }
 
     #[test]

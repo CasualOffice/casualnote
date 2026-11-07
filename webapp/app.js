@@ -3,6 +3,7 @@
 import init, { Engine } from "./pkg/casual_note_wasm.js";
 import { ICONS, I18N } from "./data.js";
 import { openStore } from "./store.js";
+import { loadFeatures } from "./features/index.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -37,6 +38,9 @@ const state = { cur: null, tabs: [], open: {}, view: null, right: true };
 const undo = [], redo = [];
 let burst = null;
 
+// What features add. See webapp/features/index.js.
+const ext = { views: {}, blocks: {}, slash: [], pageMenu: [], panels: [], settings: [], textHooks: [], nav: [], onChange: [] };
+
 const pages = () => JSON.parse(engine.pages());
 const live = () => pages().filter(p => !p.trashed);
 const pageData = id => JSON.parse(engine.page(id));
@@ -45,6 +49,7 @@ const metaOf = id => pages().find(p => p.id === id);
 function run(op) {
   const inverse = JSON.parse(engine.apply(JSON.stringify(op)));
   store.changed();
+  for (const f of ext.onChange) f(op);
   return inverse;
 }
 /** Runs edits as one undo step. */
@@ -86,6 +91,7 @@ function paintRuns(node, runs) {
     if (m.includes("highlight")) n = el("mark", {}, n);
     if (m.includes("italic")) n = el("i", {}, n);
     if (m.includes("bold")) n = el("b", {}, n);
+    if (r.link) n = el("a", { class: "ref", "data-link": r.link, href: "#" }, n);
     node.append(n);
   }
 }
@@ -114,7 +120,7 @@ function sliceRuns(runs, from, to = Infinity) {
   const out = []; let at = 0;
   for (const r of runs) {
     const a = Math.max(from, at), b = Math.min(to, at + r.text.length);
-    if (a < b) out.push({ text: r.text.slice(a - at, b - at), marks: r.marks || [] });
+    if (a < b) out.push({ text: r.text.slice(a - at, b - at), marks: r.marks || [], ...(r.link ? { link: r.link } : {}) });
     at += r.text.length;
   }
   return out;
@@ -149,6 +155,7 @@ function blockEl(b, n) {
     el("button", { class: "add", "aria-label": "Add block", onclick: () => { const id = uid(); edit({ op: "insert_block", page: pid, after: b.id, block: { id, kind: "paragraph", checked: false, runs: [] } }); renderPage(); setCaret(textOf(id)); } }, icon("plus")),
     handle(b)));
   if (b.kind === "divider") { row.append(el("hr")); return row; }
+  if (ext.blocks[b.kind]) { row.append(ext.blocks[b.kind](b)); return row; }
   if (b.kind === "bulleted") row.append(el("span", { class: "mk", text: "•" }));
   if (b.kind === "numbered") row.append(el("span", { class: "mk", text: new Intl.NumberFormat(lang).format(n) + "." }));
   if (b.kind === "callout") row.append(icon("lightbulb"));
@@ -174,6 +181,7 @@ function blockEl(b, n) {
 }
 function afterText(b, node) {
   const text = plain(b);
+  if (ext.textHooks.some(h => h(b, node, text.slice(0, caretOffset(node))))) return;
   const md = MD[text.replace(/ /g, " ").match(/^(\S+) $/)?.[1]];
   if (md && b.kind === "paragraph") {
     edit({ op: "splice_text", page: page.meta.id, block: b.id, at: 0, delete: text.length, insert: "" }, { op: "set_block", page: page.meta.id, block: b.id, kind: md, checked: false });
@@ -278,6 +286,10 @@ function slashMenu(b, node, q, len, caret) {
     ops.push({ op: "set_block", page: pid, block: b.id, kind, checked: false });
     edit(...ops); renderPage(); setCaret(textOf(b.id));
   } }));
+  for (const x of ext.slash) if ((x.label + " " + t(x.label)).toLowerCase().includes(ql)) items.push({ gl: x.gl, label: t(x.label), run: () => {
+    edit({ op: "splice_text", page: pid, block: b.id, at: caret - len, delete: len, insert: "" });
+    reload(); x.run(b);
+  } });
   const r = getSelection().getRangeAt(0).getClientRects()[0] || node.getBoundingClientRect();
   menu(r, items, { keys: true, hdr: t("Blocks") });
 }
@@ -358,6 +370,7 @@ function renderMeta() {
   const heads = page.blocks.filter(b => /^heading/.test(b.kind) && plain(b));
   if (!heads.length) box.append(el("p", { text: t("Headings appear here.") }));
   heads.forEach(b => { const btn = el("button", { class: "oln", text: plain(b), onclick: () => $(`.b[data-id="${b.id}"]`)?.scrollIntoView({ block: "start" }) }); btn.style.paddingInlineStart = (Math.max(0, +b.kind.slice(-1) - 2) ? 10 : 0) + "px"; box.append(btn); });
+  for (const panel of ext.panels) panel(page);
   const text = [page.meta.title, ...page.blocks.map(plain)].join(" ");
   const words = [...new Intl.Segmenter(lang, { granularity: "word" }).segment(text)].filter(x => x.isWordLike).length;
   $("#counts").textContent = new Intl.NumberFormat(lang).format(words);
@@ -411,7 +424,7 @@ function renderTabs() {
 function renderCrumbs() {
   const box = $("#crumbs"); box.replaceChildren();
   ["#favBtn", "#moreBtn"].forEach(q => { $(q).hidden = !!state.view; });
-  if (state.view) { box.append(el("b", { text: t("Settings") })); return; }
+  if (state.view) { box.append(el("b", { text: t(ext.views[state.view]?.label || "Settings") })); return; }
   const all = pages(), chain = []; let p = all.find(x => x.id === state.cur);
   while (p) { chain.unshift(p); p = all.find(x => x.id === p.parent); }
   chain.forEach((q, i) => {
@@ -424,7 +437,9 @@ function renderCrumbs() {
 }
 function renderSettings() {
   const sel = el("select", { class: "langsel", id: "langSel", "aria-label": t("Language"), onchange: e => { setLang(e.target.value); renderAll(); } }, ...LANGS.map(([c, n]) => el("option", { value: c, text: n, ...(c === lang ? { selected: true } : {}) })));
-  $("#content").replaceChildren(el("div", { class: "docscroll" }, el("div", { class: "agent" }, el("h1", { class: "title", text: t("Settings") }), el("h2", { text: t("Language") }), sel)));
+  const box = el("div", { class: "agent" }, el("h1", { class: "title", text: t("Settings") }), el("h2", { text: t("Language") }), sel);
+  for (const section of ext.settings) section(box);
+  $("#content").replaceChildren(el("div", { class: "docscroll" }, box));
 }
 function renderAll() {
   if (!live().length) { const id = uid(); engine.apply(JSON.stringify({ op: "create_page", id, parent: null, title: "" })); engine.apply(JSON.stringify({ op: "insert_block", page: id, after: null, block: { id: uid(), kind: "paragraph", checked: false, runs: [] } })); store.changed(); state.cur = id; }
@@ -432,6 +447,8 @@ function renderAll() {
   if (!state.tabs.includes(state.cur)) state.tabs.push(state.cur);
   renderSide(); renderTabs(); renderCrumbs();
   if (state.view === "settings") { $("#content").replaceChildren(); renderSettings(); }
+  else if (ext.views[state.view]) ext.views[state.view].render($("#content"));
+  else if (ext.pageView?.(pageData(state.cur))) { /* a feature drew this page */ }
   else { const had = $(".blocks"); if (had) had.dataset.page = ""; renderPage(); }
   $("#right").hidden = !state.right;
 }
@@ -477,6 +494,7 @@ function paintSaved() { $("#saved").textContent = saveState === "saved" ? t("Sav
 
 function wire() {
   $$("[data-i]").forEach(n => n.replaceWith(icon(n.dataset.i)));
+  for (const item of ext.nav) $("#tree").before(el("button", { class: "nav", id: item.id, onclick: item.run }, icon(item.icon), el("span", { "data-t": item.label, text: t(item.label) })));
   $("#searchBtn").addEventListener("click", openSearch);
   $("#newBtn").addEventListener("click", () => newPage(null));
   $("#settingsBtn").addEventListener("click", () => { state.view = "settings"; renderAll(); });
@@ -485,7 +503,13 @@ function wire() {
   $("#favBtn").addEventListener("click", () => { const m = metaOf(state.cur); edit({ op: "set_favorite", id: m.id, value: !m.favorite }); renderSide(); renderCrumbs(); });
   $("#moreBtn").addEventListener("click", e => {
     const m = metaOf(state.cur);
-    menu(e.currentTarget.getBoundingClientRect(), [{ gl: "trash", label: t("Trash"), danger: true, run: () => { edit({ op: "set_trashed", id: m.id, value: true }); state.cur = null; renderAll(); } }]);
+    const extra = ext.pageMenu.flatMap(f => f(m));
+    menu(e.currentTarget.getBoundingClientRect(), [...extra, { gl: "trash", label: t("Trash"), danger: true, run: () => { edit({ op: "set_trashed", id: m.id, value: true }); state.cur = null; renderAll(); } }]);
+  });
+  document.addEventListener("click", e => {
+    const a = e.target.closest?.("a[data-link]"); if (!a) return;
+    e.preventDefault();
+    if (metaOf(a.dataset.link) && !metaOf(a.dataset.link).trashed) openPage(a.dataset.link);
   });
   document.addEventListener("keydown", e => {
     const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
@@ -494,6 +518,14 @@ function wire() {
     else if (e.key === "Escape") { closeMenu(); closeSearch(); }
   });
 }
+
+// Everything a feature may use. Features write only through `edit`, so undo and saving work.
+const api = {
+  ext, state, t, el, icon, uid, $, $$, edit, run, menu, closeMenu, plain, paintRuns, setCaret, selectionOffsets, caretOffset,
+  pages, live, pageData, metaOf, openPage, renderAll, renderPage, renderSide, reload, textOf,
+  blockOf, currentPage: () => page, newPage, openView: id => { state.view = id; renderAll(); },
+  get engine() { return engine; }, get store() { return store; }, get lang() { return lang; },
+};
 
 async function start() {
   await init();
@@ -507,6 +539,7 @@ async function start() {
   });
   const saved = await store.load();
   if (saved) engine.import(saved);
+  await loadFeatures(api);
   wire();
   let code = null; try { code = localStorage.getItem("casualnote-lang"); } catch { /* optional */ }
   setLang(code || LANGS.find(l => (navigator.language || "en").toLowerCase().startsWith(l[0].slice(0, 2)))?.[0] || "en");
@@ -515,7 +548,7 @@ async function start() {
   renderAll();
   if (new URLSearchParams(location.search).has("e2e")) {
     const { runE2E } = await import("./tests/e2e.js");
-    runE2E({ engine, store, state, undoStack: undo, replay, redoStack: redo, pageNow: () => page, openPage, setLang, renderAll, $, $$, setCaret, textOf });
+    runE2E({ api, engine, store, state, undoStack: undo, replay, redoStack: redo, pageNow: () => page, openPage, setLang, renderAll, $, $$, setCaret, textOf });
   }
 }
 start().catch(err => { console.error(err); document.getElementById("error").textContent = String(err?.message || err); });
