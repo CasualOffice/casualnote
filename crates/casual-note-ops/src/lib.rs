@@ -246,7 +246,7 @@ mod tests {
     fn every_edit_undoes_exactly() {
         let mut ws = seeded(1);
         let before = ws.page("p").unwrap();
-        let ops = vec![
+        let ops = [
             splice("a", 5, 0, " world"),
             Op::SetBlock {
                 page: "p".into(),

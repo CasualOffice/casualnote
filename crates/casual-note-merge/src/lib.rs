@@ -213,9 +213,10 @@ impl Workspace {
     }
 
     fn text(&self, page: &str, block: &str) -> Result<LoroText, Error> {
-        self.record(page, block)?
-            .get_or_create_container("text", LoroText::new())
-            .map_err(bad)
+        match self.record(page, block)?.get("text") {
+            Some(ValueOrContainer::Container(loro::Container::Text(t))) => Ok(t),
+            _ => Err(Error::NotFound(block.into())),
+        }
     }
 
     fn index(&self, page: &str, block: &str) -> Result<Option<usize>, Error> {
