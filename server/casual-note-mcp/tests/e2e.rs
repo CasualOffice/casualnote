@@ -232,25 +232,39 @@ fn initialize_list_read_write_save_and_reopen() {
     assert!(third.has_page("other") && third.has_page(&id));
 }
 
+// Windows needs a privilege to make symlinks, so there the absolute and `..` escapes are tested alone.
+#[cfg(unix)]
+fn symlink(from: &std::path::Path, to: &std::path::Path) -> bool {
+    std::os::unix::fs::symlink(from, to).is_ok()
+}
+#[cfg(not(unix))]
+fn symlink(_from: &std::path::Path, _to: &std::path::Path) -> bool {
+    false
+}
+
 #[test]
 fn root_escapes_are_refused_and_read_nothing() {
     let tree = Tree::new();
     notebook(&tree.root().join("in.casualnote"), "Inside", 21);
     let secret = tree.0.join("outside/secret.casualnote");
     notebook(&secret, "SECRET TITLE", 22);
-    std::os::unix::fs::symlink(&secret, tree.root().join("link.casualnote")).unwrap();
-    std::os::unix::fs::symlink(tree.0.join("outside"), tree.root().join("linkdir")).unwrap();
+    let linked = symlink(&secret, &tree.root().join("link.casualnote"))
+        && symlink(&tree.0.join("outside"), &tree.root().join("linkdir"));
     let mut client = Client::with_root(&tree.root(), &[]);
 
-    let cases = [
+    let mut cases = vec![
         secret.display().to_string(),
         "../outside/secret.casualnote".to_owned(),
-        tree.root().join("link.casualnote").display().to_string(),
-        tree.root()
-            .join("linkdir/secret.casualnote")
-            .display()
-            .to_string(),
     ];
+    if linked {
+        cases.push(tree.root().join("link.casualnote").display().to_string());
+        cases.push(
+            tree.root()
+                .join("linkdir/secret.casualnote")
+                .display()
+                .to_string(),
+        );
+    }
     for path in &cases {
         let (out, err) = client.call("list_pages", json!({ "notebook": path }));
         assert!(err, "{path}");
