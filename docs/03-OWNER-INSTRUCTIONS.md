@@ -20,3 +20,4 @@
 | 14 | 2026-11-08 | Hand the work over complete; the owner creates the repository and pushes themselves. Replaces the repository part of 13 | Active | `DEC-12` |
 | 15 | 2026-11-08 | The marketing site must be premium and engaging, with animation and illustrations, and not AI slop. Show it before deploying | Active | `site/`, `WEB-07`. docs/49 "no decoration" stays for the app; the site is the exception |
 | 16 | 2026-11-08 | The site is not smooth and its colours are not complementary. Study colour theory and design first, and decide where the application is placed | Active | `site/`, `WEB-07` |
+| 17 | 2026-11-08 | Navy and marigold rejected as dated. Owner chose direction B: light and airy, one vivid blue, soft shadows, no dark blocks. Logo is the pen nib | Active | `site/`, `WEB-07`. The site is light only |

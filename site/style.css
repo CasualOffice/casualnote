@@ -1,20 +1,13 @@
-/* Colour: cobalt ink (oklch hue 265) and its true complement, a marigold highlighter (hue 85), over neutrals tinted
-   toward the ink. Roughly 60% paper, 30% navy, 10% accents, and marigold stays rare so it keeps its force.
+/* One light theme: quiet neutrals, generous space, soft shadows and a single vivid blue, used sparingly.
    Motion: only transform and opacity on elements that hold their own layer, with no per-frame script. */
 @font-face { font-family: "Geist"; src: url("assets/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 :root {
-  --paper: #f8f9fc; --panel: #edf0f6; --raise: #fff; --fg: #141a29; --muted: #515866; --line: #dadee6;
-  --ink: #1f47d6; --on-ink: #fff; --navy: #101f45; --navy-line: #2a3b6b; --on-navy: #f2f5fb; --on-navy-muted: #b3bed5;
-  --mari: #f4bf36; --mari-soft: #fde9be; --on-mari: #141a29;
-  --shadow: 16 31 69; --radius: 8px; --ease: cubic-bezier(.16, 1, .3, 1);
+  --paper: #fbfbfd; --panel: #f1f1f4; --raise: #fff; --fg: #1d1d20; --muted: #63636b; --line: #e4e4e9;
+  --ink: #3355ff; --on-ink: #fff; --stage: #f1f1f4; --stage-line: #e0e0e6; --on-stage: #1d1d20; --on-stage-muted: #63636b;
+  --ink-soft: #eef1ff; --shadow: 40 44 80; --radius: 8px; --ease: cubic-bezier(.16, 1, .3, 1);
   --ui: "Geist", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Noto Sans JP", "Noto Sans Arabic", "Noto Sans Devanagari", system-ui, sans-serif;
-  --gutter: clamp(20px, 4vw, 56px);
+  --gutter: clamp(20px, 4vw, 56px); color-scheme: light;
 }
-@media (prefers-color-scheme: dark) { :root {
-  --paper: #0b0f19; --panel: #131927; --raise: #1b2130; --fg: #eceef3; --muted: #a1a8b6; --line: #272e3d;
-  --ink: #7aa1fc; --on-ink: #0b0f19; --navy: #131c36; --navy-line: #2a3656; --mari-soft: #2c2616;
-  --shadow: 0 0 0; color-scheme: dark;
-} }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 72px; -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--paper); color: var(--fg); font: 400 1.0625rem/1.55 var(--ui); -webkit-font-smoothing: antialiased; }
@@ -44,19 +37,13 @@ p { margin: 0; text-wrap: pretty; }
 .btn:active { transform: translateY(0) scale(.985); }
 .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 .btn.primary:hover { border-color: var(--ink); }
-.btn.mari { background: var(--mari); border-color: var(--mari); color: var(--on-mari); }
-.btn.mari:hover { border-color: var(--on-navy); }
 .btn.small { padding: 7px 13px; font-size: .9375rem; }
 .btn.big { padding: 16px 28px; font-size: 1.125rem; }
 
-/* The highlighter: a marigold band that swipes across, behind words that turn dark to sit on it */
-.marked { position: relative; display: inline-block; white-space: nowrap; isolation: isolate; }
-.hl { position: absolute; z-index: -1; inset: .1em -.05em .04em; background: var(--mari); border-radius: 3px; transform-origin: 0 50%; }
-.hl-t { color: var(--on-mari); }
-.js .hl { transform: scaleX(0); transition: transform .9s .25s var(--ease); }
-.js .hl-t { color: inherit; transition: color .35s .45s; }
-.js .drawn .hl { transform: none; }
-.js .drawn .hl-t { color: var(--on-mari); }
+/* The one coloured phrase in a headline: it turns blue as the page arrives */
+.marked { white-space: nowrap; color: var(--ink); }
+.js .marked { color: inherit; transition: color .8s .25s ease; }
+.js .marked.drawn, .js .drawn .marked { color: var(--ink); }
 
 /* Self-drawing ink, on the export diagram */
 .ink { overflow: visible; fill: none; stroke: var(--ink); stroke-linecap: round; stroke-linejoin: round; }
@@ -86,8 +73,8 @@ p { margin: 0; text-wrap: pretty; }
 .js .cta { animation-delay: .14s; }
 @keyframes rise { from { opacity: 0; transform: translateY(18px); } }
 
-/* The application has one place on this page: whole, on the navy stage, and it changes view as you read. */
-.tour { position: relative; height: 400dvh; background: var(--navy); color: var(--on-navy); }
+/* The application has one place on this page: whole, on one quiet stage, and it changes view as you read. */
+.tour { position: relative; height: 400dvh; background: var(--stage); color: var(--on-stage); }
 .tour-marks { position: absolute; inset: 0; display: grid; grid-template-rows: repeat(4, 1fr); pointer-events: none; }
 .tour-pin { position: sticky; top: 64px; height: calc(100dvh - 64px); overflow: hidden; display: grid; grid-template-columns: minmax(280px, 3fr) minmax(0, 9fr); gap: clamp(28px, 3.4vw, 56px); padding-inline: max(var(--gutter), calc((100vw - 1500px) / 2 + var(--gutter))); align-items: center; }
 .tour-copy { display: grid; gap: 28px; }
@@ -95,12 +82,12 @@ p { margin: 0; text-wrap: pretty; }
 .cap { grid-area: 1 / 1; display: grid; align-content: start; gap: 16px; opacity: 0; transform: translateY(16px); transition: opacity .55s var(--ease), transform .55s var(--ease); pointer-events: none; }
 .cap.on { opacity: 1; transform: none; transition-delay: .1s; }
 .cap h2 { font-size: clamp(2rem, 1.2rem + 2.2vw, 3.25rem); }
-.cap p { color: var(--on-navy-muted); font-size: 1.0625rem; line-height: 1.45; max-width: 34ch; }
+.cap p { color: var(--on-stage-muted); font-size: 1.0625rem; line-height: 1.45; max-width: 34ch; }
 .tour-nav { display: flex; flex-wrap: wrap; gap: 4px; margin-inline-start: -10px; }
-.tour-nav button { padding: 6px 10px; color: var(--on-navy-muted); font-size: .9375rem; border-radius: 6px; transition: color .25s; }
-.tour-nav button:hover { color: var(--on-navy); }
-.tour-nav button[aria-pressed="true"] { color: var(--mari); font-weight: 500; }
-.app-frame { position: relative; width: min(100%, calc((100dvh - 112px) * 1.6)); justify-self: end; aspect-ratio: 16 / 10; border-radius: var(--radius); overflow: hidden; background: var(--panel); box-shadow: 0 0 0 1px var(--navy-line); }
+.tour-nav button { padding: 6px 10px; color: var(--on-stage-muted); font-size: .9375rem; border-radius: 6px; transition: color .25s; }
+.tour-nav button:hover { color: var(--on-stage); }
+.tour-nav button[aria-pressed="true"] { color: var(--ink); font-weight: 500; }
+.app-frame { position: relative; width: min(100%, calc((100dvh - 112px) * 1.6)); justify-self: end; aspect-ratio: 16 / 10; border-radius: var(--radius); overflow: hidden; background: var(--panel); box-shadow: 0 0 0 1px rgb(30 30 60 / .06), 0 40px 90px -30px rgb(var(--shadow) / .35); }
 .shot { position: absolute; inset: 0; opacity: 0; transform: scale(1.012); transition: opacity .55s ease, transform .9s var(--ease); will-change: opacity, transform; }
 .shot.on { opacity: 1; transform: none; }
 .shot img { width: 100%; height: 100%; object-fit: cover; object-position: 0 0; }
@@ -119,13 +106,13 @@ html:not(.js) .tour-nav { display: none; }
 .typer { position: relative; min-height: clamp(150px, 26vh, 270px); margin-block: clamp(36px, 6vh, 64px) clamp(16px, 3vh, 28px); }
 .typed { font-size: clamp(2.1rem, 1rem + 5vw, 5.5rem); line-height: 1.22; letter-spacing: -.02em; font-weight: 500; text-align: start; }
 .typed[lang="ar"], .typed[lang="hi"] { letter-spacing: 0; line-height: 1.4; }
-.typed .comp { color: var(--ink); text-decoration: underline; text-decoration-color: var(--mari); text-underline-offset: .12em; text-decoration-thickness: 3px; }
+.typed .comp { color: var(--ink); text-decoration: underline;  text-underline-offset: .12em; text-decoration-thickness: 3px; }
 .caret { display: inline-block; width: 3px; height: .95em; margin-inline-start: 3px; background: var(--ink); vertical-align: -.1em; animation: blink 1.05s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 .cands { position: absolute; display: flex; gap: 2px; padding: 5px; background: var(--raise); color: var(--fg); border-radius: 6px; font-size: 1.125rem; font-weight: 400; letter-spacing: 0; box-shadow: 0 14px 34px -14px rgb(var(--shadow) / .5), 0 0 0 1px var(--line); z-index: 2; white-space: nowrap; }
 .cands[hidden] { display: none; }
 .cands span { padding: 3px 10px; border-radius: 4px; }
-.cands span:first-child { background: var(--mari); color: var(--on-mari); }
+.cands span:first-child { background: var(--ink); color: var(--on-ink); }
 .cands small { opacity: .65; margin-inline-end: 5px; font-size: .75em; }
 .tabs { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-block-end: 20px; }
 .tabs button { padding: 7px 14px; border-radius: 6px; color: var(--muted); transition: background-color .25s, color .25s; }
@@ -176,21 +163,21 @@ html:not(.js) .tour-nav { display: none; }
 .bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; margin-top: clamp(28px, 5vh, 48px); }
 .tile { border-radius: var(--radius); padding: clamp(22px, 2.6vw, 34px); display: grid; gap: 12px; align-content: start; background: var(--panel); }
 .tile p { color: var(--muted); }
-.t-works { grid-column: span 5; background: var(--navy); color: var(--on-navy); }
-.t-works p { color: var(--on-navy-muted); font-size: 1.1875rem; line-height: 1.4; }
+.t-works { grid-column: span 5; background: var(--ink); color: var(--on-ink); }
+.t-works p { color: inherit; font-size: 1.1875rem; line-height: 1.4; }
 .t-slow { grid-column: span 7; grid-row: span 2; }
 .t-slow dl { margin: 8px 0; display: grid; gap: 18px; }
 .t-slow dt { font-size: clamp(2.5rem, 1.6rem + 2.6vw, 4.25rem); font-weight: 600; letter-spacing: -.04em; line-height: 1; }
 .t-slow dd { margin: 6px 0 0; color: var(--muted); max-width: 46ch; }
 .t-new { grid-column: span 5; }
-.t-next { grid-column: span 12; background: var(--mari-soft); }
+.t-next { grid-column: span 12; background: var(--ink-soft); }
 .t-next p { color: var(--fg); max-width: 76ch; }
 
 /* End */
-.end { background: var(--navy); color: var(--on-navy); padding: clamp(64px, 12vh, 140px) max(var(--gutter), calc((100vw - 1500px) / 2 + var(--gutter))); display: grid; justify-items: start; gap: clamp(18px, 3vh, 28px); }
+.end { background: var(--stage); color: var(--on-stage); padding: clamp(64px, 12vh, 140px) max(var(--gutter), calc((100vw - 1500px) / 2 + var(--gutter))); display: grid; justify-items: start; gap: clamp(18px, 3vh, 28px); }
 .end h2 { font-size: clamp(3rem, 1.2rem + 7.6vw, 8.5rem); line-height: 1.02; letter-spacing: -.05em; }
-.end > p:not(.fine) { font-size: 1.1875rem; color: var(--on-navy-muted); max-width: 44ch; }
-.end .fine { color: var(--on-navy-muted); max-width: 52ch; }
+.end > p:not(.fine) { font-size: 1.1875rem; color: var(--on-stage-muted); max-width: 44ch; }
+.end .fine { color: var(--on-stage-muted); max-width: 52ch; }
 .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; max-width: 1500px; margin-inline: auto; padding: 22px var(--gutter) max(22px, env(safe-area-inset-bottom)); font-size: .875rem; color: var(--muted); }
 
 @media (max-width: 860px) {

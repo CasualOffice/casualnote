@@ -33,7 +33,7 @@ await send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/in
 for (let i = 0; i < 80; i++) { await wait(250); if (await evaluate(`[...document.querySelectorAll("#tree .row")].some(r => r.textContent.includes("Beta launch plan"))`)) break; }
 await wait(800);
 const panel = () => evaluate(`document.querySelector("#rightBtn")?.click()`);
-for (const mode of ["light", "dark"]) {
+for (const mode of ["light"]) {
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: mode }] });
   await open("Beta launch plan"); await shot(`app-page-${mode}`);
   await open("Why would someone switch?"); await panel(); await wait(400); await shot(`app-canvas-${mode}`); await panel();
@@ -41,7 +41,7 @@ for (const mode of ["light", "dark"]) {
 }
 await evaluate(`localStorage.setItem("casualnote-lang", "ar")`);
 await send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/index.html?demo=1` }); await wait(3000);
-for (const mode of ["light", "dark"]) {
+for (const mode of ["light"]) {
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: mode }] });
   await open("Beta launch plan"); await shot(`app-arabic-${mode}`);
 }
